@@ -10,5 +10,8 @@
   },
   "scripts": {
     "test": "node --test \"test/*.test.mjs\""
+  },
+  "bin": {
+    "n8n-node-tooling": "bin/n8n-node-tooling.mjs"
   }
 }
