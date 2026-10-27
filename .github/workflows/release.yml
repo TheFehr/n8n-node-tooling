@@ -82,9 +82,15 @@ jobs:
           NEXT=$(node .n8n-node-tooling/bin/n8n-node-tooling.mjs next-version --json)
           VERSION=$(echo "$NEXT" | jq -r .version)
           KIND=$(echo "$NEXT" | jq -r .kind)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          # Nothing has been tagged yet: a package.json version that already mirrors upstream
+          # is the first release as it stands, not something to bump past.
+          if [ -z "$LAST_TAG" ] && node .n8n-node-tooling/bin/n8n-node-tooling.mjs verify > /dev/null 2>&1; then
+            VERSION=$(jq -r .version package.json)
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
           RELEASE=false
           if [ "$KIND" = "sync" ] || [ -z "$LAST_TAG" ]; then
             RELEASE=true
