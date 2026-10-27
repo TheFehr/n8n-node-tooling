@@ -71,10 +71,10 @@ Reusable workflows in `.github/workflows/`, called from thin per-repo files (cop
 
 | Workflow | Purpose |
 |---|---|
-| `ci.yml` | Lint, unit tests, README versioning section, optional integration pipeline. |
+| `ci.yml` | Lint, unit tests, README versioning section, optional integration pipeline (when set, it replaces the plain unit-test step). |
 | `nightly-compat.yml` | Detects drift in the upstream, n8n and n8n-workflow versions, tests the bump, then opens an auto-merging PR from a separate job with write access. |
 | `release.yml` | Decides whether a release is due, opens an auto-merging release PR, and tags the merge commit. |
-| `publish.yml` | On a version tag: verifies the version mirror, publishes with npm provenance, creates the GitHub release. |
+| `publish.yml` | On a version tag: verifies the version mirror, publishes with npm provenance, creates the GitHub release. Notes in `.github/release-notes/<version>.md` are put in front of the generated ones. |
 
 - A release is due when upstream's major.minor moved, or a commit since the last tag was not authored by Renovate.
 - Nightly compatibility bumps are applied by re-running `update` with the exact versions the test job used, in a fresh checkout. Nothing the test job produced on disk is committed.

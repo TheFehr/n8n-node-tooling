@@ -47,7 +47,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # A package whose tests need live services runs them in the integration pipeline.
       - name: Unit tests
+        if: ${{ !inputs.integration }}
         run: npm run test:run --if-present
 
       # Only the README is checked here. The version mirror is checked where a version is

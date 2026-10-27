@@ -79,6 +79,12 @@ jobs:
             echo "Release $GITHUB_REF_NAME already exists"
             exit 0
           fi
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^")
-          gh release create "$GITHUB_REF_NAME" --verify-tag --title "Release $GITHUB_REF_NAME" \
-            --generate-notes --notes-start-tag "$PREVIOUS_TAG"
+          args=(--verify-tag --title "Release $GITHUB_REF_NAME" --generate-notes)
+          # The first release has no earlier tag to diff against.
+          if PREVIOUS_TAG=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null); then
+            args+=(--notes-start-tag "$PREVIOUS_TAG")
+          fi
+          # Hand-written notes (for example a versioning change) go in front of the generated ones.
+          NOTES_FILE=".github/release-notes/$GITHUB_REF_NAME.md"
+          [ -f "$NOTES_FILE" ] && args+=(--notes-file "$NOTES_FILE")
+          gh release create "$GITHUB_REF_NAME" "${args[@]}"
