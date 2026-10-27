@@ -6,7 +6,7 @@ Dev-time only: nothing here ships inside a node package, and nothing is a runtim
 
 ## Status
 
-Work in progress. Implemented: the version rules and the `n8n-node-tooling` CLI (`check`, `update`, `next-version`, `verify`). Planned: reusable GitHub Actions workflows (CI, nightly compatibility bump, release PR, publish), shared lint/format/tsconfig/Renovate presets, and an integration-test skeleton.
+Work in progress. Implemented: the version rules and the `n8n-node-tooling` CLI (`check`, `update`, `next-version`, `verify`). Reusable GitHub Actions workflows (CI, nightly compatibility bump, release, publish) with caller templates. Planned: shared lint/format/tsconfig/Renovate presets and an integration-test skeleton. The workflows have not run on a real runner yet.
 
 ## Version rules
 
@@ -64,6 +64,21 @@ All commands accept `--cwd <dir>`. Configuration lives in the consuming package'
 - `peerDependencies["n8n-workflow"]` is left alone; the n8n-workflow version synced against is recorded in `n8nWorkflowVersion`.
 
 A missing README sentence or pinned line is an error, never a silent skip.
+
+## Workflows
+
+Reusable workflows in `.github/workflows/`, called from thin per-repo files (copy `templates/workflows/*.yml`, replace `<SHA>` with a commit of this repository, in both the `uses:` line and `tooling-ref`):
+
+| Workflow | Purpose |
+|---|---|
+| `ci.yml` | Lint, unit tests, README versioning section, optional integration pipeline. |
+| `nightly-compat.yml` | Detects drift in the upstream, n8n and n8n-workflow versions, tests the bump, then opens an auto-merging PR from a separate job with write access. |
+| `release.yml` | Decides whether a release is due, opens an auto-merging release PR, and tags the merge commit. |
+| `publish.yml` | On a version tag: verifies the version mirror, publishes with npm provenance, creates the GitHub release. |
+
+- A release is due when upstream's major.minor moved, or a commit since the last tag was not authored by Renovate.
+- Nightly compatibility bumps are applied by re-running `update` with the exact versions the test job used, in a fresh checkout. Nothing the test job produced on disk is committed.
+- The repository needs a GitHub App (secrets `CLIENT_ID`, `APP_PRIVATE_KEY`) so pull requests and tags it creates trigger workflows. Publishing uses npm Trusted Publishing for the caller's `publish.yml`, or an `NPM_TOKEN` secret.
 
 ## Development
 

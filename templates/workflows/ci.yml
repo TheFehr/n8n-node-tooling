@@ -1,0 +1,17 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: TheFehr/n8n-node-tooling/.github/workflows/ci.yml@<SHA>
+    with:
+      tooling-ref: <SHA>
+      # integration: true  # also run `npm run test:pipeline`

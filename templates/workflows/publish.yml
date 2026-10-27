@@ -1,0 +1,20 @@
+# Must stay named publish.yml: the package's npm Trusted Publisher names this file.
+name: Publish
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    uses: TheFehr/n8n-node-tooling/.github/workflows/publish.yml@<SHA>
+    with:
+      tooling-ref: <SHA>
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

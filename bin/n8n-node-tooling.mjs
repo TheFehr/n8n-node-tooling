@@ -1,13 +1,22 @@
 #!/usr/bin/env node
 // Usage: n8n-node-tooling <command> [--cwd <dir>]
+//                         [--upstream <v>] [--n8n <v>] [--n8n-workflow <v>]
 //
 //   check         Compare the repo with the latest upstream and n8n versions.
 //                 Exit 0 up to date, 1 drift found, 2 the check itself failed.
 //   update        Apply those changes to package.json, README.md and pinned files.
+//   latest        Print the latest versions as key=value lines (for $GITHUB_OUTPUT).
+//   files         Print every file `update` may touch, one per line (a PR allowlist).
+//
+// The three version flags override the lookup for that version (and skip its network
+// call). A later job can pass the exact versions an earlier job tested, so it applies
+// precisely those and nothing it did not test.
 //   next-version  Print the version the next release must carry. Offline: uses the
 //                 upstream version recorded in package.json.
 //   verify        Offline: fail (exit 1) if the package version is out of sync with
 //                 the recorded upstream version, or the README has no versioning section.
+//                 --skip-version checks only the README: main is legitimately out of sync
+//                 between a compatibility bump and the release that follows it.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -19,8 +28,25 @@ import { isInSync, nextVersion } from '../lib/versions.mjs';
 
 const args = process.argv.slice(2);
 const command = args[0];
-const cwdFlag = args.indexOf('--cwd');
-const root = resolve(cwdFlag === -1 ? process.cwd() : args[cwdFlag + 1]);
+
+function flag(name) {
+  const index = args.indexOf(name);
+  if (index === -1) return undefined;
+  const value = args[index + 1];
+  if (value === undefined || value.startsWith('--')) throw new Error(`${name} needs a value`);
+  return value;
+}
+
+// Only plain versions: these values end up written into repository files.
+function versionFlag(name) {
+  const value = flag(name);
+  if (value !== undefined && !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value)) {
+    throw new Error(`${name} must be a plain version like 1.2.3, got ${JSON.stringify(value)}`);
+  }
+  return value;
+}
+
+const root = resolve(flag('--cwd') ?? process.cwd());
 
 function read(path) {
   const full = join(root, path);
@@ -34,14 +60,29 @@ function load() {
   return { pkgText, pkg, config: loadConfig(pkg) };
 }
 
+async function resolveLatest(config) {
+  const overrides = {
+    upstream: versionFlag('--upstream'),
+    n8n: versionFlag('--n8n'),
+    n8nWorkflow: versionFlag('--n8n-workflow'),
+  };
+  const needN8n = overrides.n8n === undefined || overrides.n8nWorkflow === undefined;
+  const [upstream, n8n] = await Promise.all([
+    overrides.upstream ?? latestUpstreamVersion(config.upstream.source),
+    needN8n ? latestN8n() : { n8n: overrides.n8n, n8nWorkflow: overrides.n8nWorkflow },
+  ]);
+  return {
+    upstream,
+    n8n: overrides.n8n ?? n8n.n8n,
+    n8nWorkflow: overrides.n8nWorkflow ?? n8n.n8nWorkflow,
+  };
+}
+
 async function sync(write) {
   const { pkgText, config } = load();
-  const [upstream, n8n] = await Promise.all([
-    latestUpstreamVersion(config.upstream.source),
-    latestN8n(),
-  ]);
-  console.log(`Latest ${config.upstream.name}: ${upstream}`);
-  console.log(`Latest n8n: ${n8n.n8n} (n8n-workflow ${n8n.n8nWorkflow})`);
+  const latest = await resolveLatest(config);
+  console.log(`Latest ${config.upstream.name}: ${latest.upstream}`);
+  console.log(`Latest n8n: ${latest.n8n} (n8n-workflow ${latest.n8nWorkflow})`);
 
   const files = Object.fromEntries(config.pins.map((pin) => [pin.file, read(pin.file)]));
   const result = computeSync({
@@ -49,7 +90,7 @@ async function sync(write) {
     readmeText: read('README.md'),
     files,
     config,
-    latest: { upstream, n8n: n8n.n8n, n8nWorkflow: n8n.n8nWorkflow },
+    latest,
   });
 
   for (const change of result.changes) console.log(change);
@@ -80,20 +121,35 @@ async function main() {
       return sync(false);
     case 'update':
       return sync(true);
+    case 'latest': {
+      const latest = await resolveLatest(load().config);
+      console.log(`upstream=${latest.upstream}`);
+      console.log(`n8n=${latest.n8n}`);
+      console.log(`n8n_workflow=${latest.n8nWorkflow}`);
+      return 0;
+    }
+    case 'files': {
+      const { config } = load();
+      const files = ['package.json', 'package-lock.json'];
+      if (config.readme) files.push('README.md');
+      for (const pin of config.pins) if (!files.includes(pin.file)) files.push(pin.file);
+      console.log(files.join('\n'));
+      return 0;
+    }
     case 'next-version': {
       const { pkg, config } = load();
       const next = nextVersion(pkg.version, currentUpstream(pkg, config), config.upstream.majorOffset);
       if (next.ahead) {
         console.error(`warning: ${pkg.version} is ahead of what ${config.upstream.name} dictates`);
       }
-      console.log(next.version);
+      console.log(args.includes('--json') ? JSON.stringify(next) : next.version);
       return 0;
     }
     case 'verify': {
       const { pkg, config } = load();
       const upstream = currentUpstream(pkg, config);
       let ok = true;
-      if (!isInSync(pkg.version, upstream, config.upstream.majorOffset)) {
+      if (!args.includes('--skip-version') && !isInSync(pkg.version, upstream, config.upstream.majorOffset)) {
         console.error(
           `Version ${pkg.version} does not mirror ${config.upstream.name} ${upstream} ` +
             `(major offset ${config.upstream.majorOffset}).`,
@@ -108,7 +164,7 @@ async function main() {
       return ok ? 0 : 1;
     }
     default:
-      console.error('Usage: n8n-node-tooling <check|update|next-version|verify> [--cwd <dir>]');
+      console.error('Usage: n8n-node-tooling <check|update|latest|files|next-version|verify> [--cwd <dir>]');
       return 2;
   }
 }

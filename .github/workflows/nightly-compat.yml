@@ -1,0 +1,187 @@
+# Reusable nightly compatibility bump.
+#
+# Two jobs on purpose. "prepare" runs npm ci and the test pipeline (both execute code
+# from locked dependencies) with read-only credentials and can only compromise its own
+# throwaway runner. "commit" gets write credentials, does a completely fresh checkout and
+# trusts exactly three version strings from "prepare": it re-runs the update itself, so
+# nothing prepare produced on disk is ever committed, and only the files the tooling
+# declares can be added to the pull request.
+#
+# The caller should set a concurrency group (cancel-in-progress: false) so two runs do not
+# race on the nightly-updates branch.
+name: Nightly compatibility
+
+on:
+  workflow_call:
+    inputs:
+      tooling-ref:
+        description: Commit SHA of n8n-node-tooling to use.
+        type: string
+        required: true
+      node-version:
+        type: string
+        default: "24"
+      pipeline:
+        description: Command that tests the bumped versions.
+        type: string
+        default: npm run test:pipeline
+    secrets:
+      CLIENT_ID:
+        required: true
+      APP_PRIVATE_KEY:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      updates_found: ${{ steps.check.outputs.updates_found }}
+      upstream: ${{ steps.latest.outputs.upstream }}
+      n8n: ${{ steps.latest.outputs.n8n }}
+      n8n_workflow: ${{ steps.latest.outputs.n8n_workflow }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: TheFehr/n8n-node-tooling
+          ref: ${{ inputs.tooling-ref }}
+          path: .n8n-node-tooling
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Resolved once; every later step (here and in "commit") uses these exact values.
+      - name: Resolve latest versions
+        id: latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .n8n-node-tooling/bin/n8n-node-tooling.mjs latest >> "$GITHUB_OUTPUT"
+
+      # check exits 0 (up to date), 1 (drift) or 2 (the check failed, e.g. a transient API
+      # error). Only 1 means drift; 2 fails the job instead of being read as drift.
+      - name: Check for drift
+        id: check
+        env:
+          UPSTREAM: ${{ steps.latest.outputs.upstream }}
+          N8N: ${{ steps.latest.outputs.n8n }}
+          N8N_WORKFLOW: ${{ steps.latest.outputs.n8n_workflow }}
+        run: |
+          set +e
+          node .n8n-node-tooling/bin/n8n-node-tooling.mjs check \
+            --upstream "$UPSTREAM" --n8n "$N8N" --n8n-workflow "$N8N_WORKFLOW"
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo "updates_found=false" >> "$GITHUB_OUTPUT"
+          elif [ "$code" -eq 1 ]; then
+            echo "updates_found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "check failed (exit $code), not treating it as drift"
+            exit "$code"
+          fi
+
+      - name: Apply the update
+        if: steps.check.outputs.updates_found == 'true'
+        env:
+          UPSTREAM: ${{ steps.latest.outputs.upstream }}
+          N8N: ${{ steps.latest.outputs.n8n }}
+          N8N_WORKFLOW: ${{ steps.latest.outputs.n8n_workflow }}
+        run: |
+          node .n8n-node-tooling/bin/n8n-node-tooling.mjs update \
+            --upstream "$UPSTREAM" --n8n "$N8N" --n8n-workflow "$N8N_WORKFLOW"
+          npm install
+
+      - name: Test the bumped versions
+        if: steps.check.outputs.updates_found == 'true'
+        env:
+          PIPELINE: ${{ inputs.pipeline }}
+        run: bash -c "$PIPELINE"
+
+  commit:
+    needs: prepare
+    if: needs.prepare.outputs.updates_found == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: nightly-compat-commit
+      cancel-in-progress: false
+    steps:
+      - name: Generate token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        with:
+          client-id: ${{ secrets.CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      # Fresh checkout: nothing from the prepare runner exists here.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          token: ${{ steps.app.outputs.token }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: TheFehr/n8n-node-tooling
+          ref: ${{ inputs.tooling-ref }}
+          path: .n8n-node-tooling
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Apply exactly the versions prepare tested
+        env:
+          UPSTREAM: ${{ needs.prepare.outputs.upstream }}
+          N8N: ${{ needs.prepare.outputs.n8n }}
+          N8N_WORKFLOW: ${{ needs.prepare.outputs.n8n_workflow }}
+        run: |
+          node .n8n-node-tooling/bin/n8n-node-tooling.mjs update \
+            --upstream "$UPSTREAM" --n8n "$N8N" --n8n-workflow "$N8N_WORKFLOW"
+          # No lifecycle scripts run while the lockfile is regenerated.
+          npm install --package-lock-only --ignore-scripts
+
+      - name: List the files this PR may contain
+        id: files
+        run: |
+          {
+            echo 'paths<<EOF_PATHS'
+            node .n8n-node-tooling/bin/n8n-node-tooling.mjs files
+            echo 'EOF_PATHS'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create pull request
+        id: cpr
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
+        with:
+          token: ${{ steps.app.outputs.token }}
+          commit-message: "chore: nightly compatibility updates"
+          title: Nightly Compatibility Updates
+          body: Automated update of the tracked upstream and n8n versions.
+          add-paths: ${{ steps.files.outputs.paths }}
+          branch: nightly-updates
+          base: ${{ github.event.repository.default_branch }}
+          delete-branch: true
+          sign-commits: true
+
+      # No fallback to a plain merge: main requires status checks, so only --auto is safe.
+      - name: Enable auto-merge
+        if: steps.cpr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
+        run: gh pr merge --auto --squash "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"

@@ -1,0 +1,209 @@
+# Reusable release workflow.
+#
+# Run it from the caller on a nightly schedule, on workflow_dispatch and on push to the
+# default branch. Three jobs:
+#
+#   plan         Read-only, installs nothing. Decides whether a release is due and which
+#                version it carries (see "next-version" in the tooling).
+#   release-pr   (schedule / dispatch) Opens a "release"-labelled PR that bumps the version
+#                and the changelog and auto-merges it.
+#   tag          (push of that PR's merge commit) Tags the commit. The tag push, made with
+#                the app token so it triggers workflows, starts the caller's publish workflow.
+#
+# A release is due when upstream's major.minor moved (the version syncs to X.Y.0), or when
+# there is at least one commit since the last tag that Renovate did not author. Node-only
+# changes only ever bump the patch.
+#
+# The caller should set a concurrency group (cancel-in-progress: false).
+name: Release
+
+on:
+  workflow_call:
+    inputs:
+      tooling-ref:
+        description: Commit SHA of n8n-node-tooling to use.
+        type: string
+        required: true
+      node-version:
+        type: string
+        default: "24"
+    secrets:
+      CLIENT_ID:
+        required: true
+      APP_PRIVATE_KEY:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      is_release_commit: ${{ steps.plan.outputs.is_release_commit }}
+      release: ${{ steps.plan.outputs.release }}
+      version: ${{ steps.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: TheFehr/n8n-node-tooling
+          ref: ${{ inputs.tooling-ref }}
+          path: .n8n-node-tooling
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Plan
+        id: plan
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # A merged release PR is detected by its label, not the commit message, so an
+          # edited merge title cannot break detection.
+          LABELLED=$(gh api "repos/$GITHUB_REPOSITORY/commits/$(git rev-parse HEAD)/pulls" \
+            --jq '[.[] | select(.labels[].name == "release")] | length > 0')
+          echo "is_release_commit=$LABELLED" >> "$GITHUB_OUTPUT"
+          if [ "$LABELLED" = "true" ]; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          NEXT=$(node .n8n-node-tooling/bin/n8n-node-tooling.mjs next-version --json)
+          VERSION=$(echo "$NEXT" | jq -r .version)
+          KIND=$(echo "$NEXT" | jq -r .kind)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          RELEASE=false
+          if [ "$KIND" = "sync" ] || [ -z "$LAST_TAG" ]; then
+            RELEASE=true
+          else
+            # Any commit since the last tag whose author is not Renovate.
+            HUMAN=$(git log "$LAST_TAG"..HEAD --format='%ae' | grep -v -i 'renovate' | head -n 1 || true)
+            [ -n "$HUMAN" ] && RELEASE=true
+          fi
+          echo "Next version $VERSION ($KIND), last tag '$LAST_TAG', release=$RELEASE"
+          echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
+
+  release-pr:
+    needs: plan
+    if: github.event_name != 'push' && needs.plan.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        with:
+          client-id: ${{ secrets.CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0 # the changelog is built from the full history and tags
+          persist-credentials: false
+          token: ${{ steps.app.outputs.token }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: TheFehr/n8n-node-tooling
+          ref: ${{ inputs.tooling-ref }}
+          path: .n8n-node-tooling
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Bump version and changelog
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          npm version "$VERSION" --no-git-tag-version --allow-same-version --ignore-scripts
+          npx --yes auto-changelog@2.7.0 -p
+          # The bumped version must mirror upstream before it is proposed.
+          node .n8n-node-tooling/bin/n8n-node-tooling.mjs verify
+
+      - name: Ensure the release label exists
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: gh label create release --color 0e8a16 --description "Automated release PR" --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+
+      - name: Open release PR
+        id: cpr
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
+        with:
+          token: ${{ steps.app.outputs.token }}
+          commit-message: "Release ${{ needs.plan.outputs.version }}"
+          title: "Release ${{ needs.plan.outputs.version }}"
+          body: "Automated release. Merging this PR tags the release and publishes ${{ needs.plan.outputs.version }} to npm."
+          add-paths: |
+            package.json
+            package-lock.json
+            CHANGELOG.md
+          branch: release/${{ needs.plan.outputs.version }}
+          base: ${{ github.event.repository.default_branch }}
+          delete-branch: true
+          sign-commits: true
+          labels: release
+
+      - name: Enable auto-merge
+        if: steps.cpr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: gh pr merge --auto --squash --subject "Release $VERSION" "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"
+
+  tag:
+    needs: plan
+    if: needs.plan.outputs.is_release_commit == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        with:
+          client-id: ${{ secrets.CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      # Tags are an unprotected ref, so this push needs no bypass rights. HEAD stays the
+      # release merge commit until the next push, so every scheduled run until then lands
+      # here again: an existing tag on this commit means "already released".
+      - name: Tag the release commit
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git fetch --tags --quiet
+          if git rev-parse -q --verify "refs/tags/$VERSION" > /dev/null; then
+            [ "$(git rev-list -n1 "$VERSION")" = "$(git rev-parse HEAD)" ] || {
+              echo "Tag $VERSION already exists on a different commit"
+              exit 1
+            }
+            echo "Tag $VERSION already exists on this commit, nothing to do."
+            exit 0
+          fi
+          git tag "$VERSION"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/$GITHUB_REPOSITORY.git" "$VERSION"

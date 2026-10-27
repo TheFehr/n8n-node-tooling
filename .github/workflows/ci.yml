@@ -1,0 +1,63 @@
+# Reusable CI for an n8n community node package.
+#
+# Caller (see templates/workflows/ci.yml). The job is named "build", so a caller job
+# called "ci" shows up as the status check "ci / build".
+name: CI
+
+on:
+  workflow_call:
+    inputs:
+      tooling-ref:
+        description: Commit SHA of n8n-node-tooling to use. Pass the same SHA the caller pins this workflow at.
+        type: string
+        required: true
+      node-version:
+        type: string
+        default: "24"
+      integration:
+        description: Also run the integration pipeline (npm run test:pipeline).
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: TheFehr/n8n-node-tooling
+          ref: ${{ inputs.tooling-ref }}
+          path: .n8n-node-tooling
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test:run --if-present
+
+      # Only the README is checked here. The version mirror is checked where a version is
+      # committed to a release (the release PR job and the publish workflow): main is out of
+      # sync on purpose between a compatibility bump and the release that follows it.
+      - name: Verify the README documents versioning
+        run: node .n8n-node-tooling/bin/n8n-node-tooling.mjs verify --skip-version
+
+      - name: Integration tests
+        if: ${{ inputs.integration }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run test:pipeline

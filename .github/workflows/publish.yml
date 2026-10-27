@@ -1,0 +1,84 @@
+# Reusable publish workflow, triggered by the caller on a version tag.
+#
+# npm Trusted Publishing validates the calling workflow's file, so the caller must be
+# .github/workflows/publish.yml in the node's repository (see templates/workflows) and the
+# package's trusted publisher must name that file. Alternatively pass NPM_TOKEN.
+#
+# "npm run release" is the publish step @n8n/node-cli documents for CI: inside GitHub
+# Actions it runs lint, build and "npm publish" with provenance, and sets the variable the
+# package's prepublishOnly guard requires.
+name: Publish
+
+on:
+  workflow_call:
+    inputs:
+      tooling-ref:
+        description: Commit SHA of n8n-node-tooling to use.
+        type: string
+        required: true
+      node-version:
+        type: string
+        default: "24"
+    secrets:
+      NPM_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # npm provenance and Trusted Publishing
+      contents: write # create the GitHub release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0 # release notes start at the previous tag
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: TheFehr/n8n-node-tooling
+          ref: ${{ inputs.tooling-ref }}
+          path: .n8n-node-tooling
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      # Trusted Publishing needs a recent npm.
+      - name: Update npm
+        run: npm install -g npm@11
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Never publish a version that does not mirror the recorded upstream version.
+      - name: Verify versioning
+        run: node .n8n-node-tooling/bin/n8n-node-tooling.mjs verify
+
+      - name: Release
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          [ -n "$NPM_TOKEN" ] && npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+          npm run release
+
+      # GitHub generates the notes. The start tag is passed explicitly because GitHub would
+      # otherwise diff against the last published *release*, which can be far behind the last
+      # tag. Skipped if the release already exists (a rerun).
+      - name: Create GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists"
+            exit 0
+          fi
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^")
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "Release $GITHUB_REF_NAME" \
+            --generate-notes --notes-start-tag "$PREVIOUS_TAG"

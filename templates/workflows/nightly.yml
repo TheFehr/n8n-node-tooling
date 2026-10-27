@@ -1,0 +1,22 @@
+name: Nightly compatibility
+
+on:
+  schedule:
+    - cron: "34 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-compat
+  cancel-in-progress: false
+
+jobs:
+  nightly:
+    uses: TheFehr/n8n-node-tooling/.github/workflows/nightly-compat.yml@<SHA>
+    with:
+      tooling-ref: <SHA>
+    secrets:
+      CLIENT_ID: ${{ secrets.CLIENT_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
