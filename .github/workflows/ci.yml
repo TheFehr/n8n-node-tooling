@@ -14,6 +14,14 @@ on:
       node-version:
         type: string
         default: "24"
+      lint-script:
+        description: npm script that lints the package.
+        type: string
+        default: lint
+      extra-lint-script:
+        description: Optional second lint script, run as its own step so a failure names the linter.
+        type: string
+        default: ""
       integration:
         description: Also run the integration pipeline (npm run test:pipeline).
         type: boolean
@@ -44,8 +52,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint
-        run: npm run lint
+      - name: Lint (${{ inputs.lint-script }})
+        env:
+          LINT_SCRIPT: ${{ inputs.lint-script }}
+        run: npm run "$LINT_SCRIPT"
+
+      - name: Lint (${{ inputs.extra-lint-script }})
+        if: ${{ inputs.extra-lint-script != '' }}
+        env:
+          LINT_SCRIPT: ${{ inputs.extra-lint-script }}
+        run: npm run "$LINT_SCRIPT"
 
       # A package whose tests need live services runs them in the integration pipeline.
       - name: Unit tests

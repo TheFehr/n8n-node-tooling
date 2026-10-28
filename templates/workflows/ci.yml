@@ -15,3 +15,5 @@ jobs:
     with:
       tooling-ref: <SHA>
       # integration: true  # also run `npm run test:pipeline`
+      # lint-script: lint:n8n
+      # extra-lint-script: lint:oxlint  # a second linter, as its own step
