@@ -133,3 +133,9 @@ test('update refuses to move the tracked upstream version backwards', () => {
   assert.equal(result.status, 2);
   assert.match(result.stderr, /Refusing to move Example from 0\.40\.5 back to 0\.39\.0/);
 });
+
+test('a flag hiding in the value position of another flag is refused', () => {
+  const result = run(project(), 'files', '--upstream', '--typo');
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /--upstream needs a value/);
+});

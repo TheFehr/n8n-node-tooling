@@ -39,6 +39,9 @@ function checkArguments() {
   for (let index = 1; index < args.length; index += 1) {
     const arg = args[index];
     if (VALUE_FLAGS.includes(arg)) {
+      // The value is skipped, so it must not be a flag in disguise (--upstream --typo).
+      const value = args[index + 1];
+      if (value === undefined || value.startsWith('--')) throw new Error(`${arg} needs a value`);
       index += 1;
     } else if (!BOOLEAN_FLAGS.includes(arg)) {
       throw new Error(`Unknown argument ${JSON.stringify(arg)} (flags take their value as a separate argument)`);

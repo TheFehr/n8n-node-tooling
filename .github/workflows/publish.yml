@@ -87,7 +87,10 @@ jobs:
         run: |
           NAME=$(node -p "require('./package.json').name")
           VERSION=$(node -p "require('./package.json').version")
-          if npm view "$NAME@$VERSION" version > /dev/null 2>&1; then
+          # npm view ignores publishConfig.registry, which npm publish honours: ask the
+          # registry the package is published to.
+          REGISTRY=$(node -p "require('./package.json').publishConfig?.registry ?? ''")
+          if npm view "$NAME@$VERSION" version ${REGISTRY:+--registry "$REGISTRY"} > /dev/null 2>&1; then
             echo "$NAME@$VERSION is already published"
             echo "published=true" >> "$GITHUB_OUTPUT"
           else

@@ -191,3 +191,11 @@ test('moving upstream backwards is refused, a tracked range is replaced', () => 
   });
   assert.equal(JSON.parse(result.files['package.json']).devDependencies.x, '1.0.0');
 });
+
+test('a pin version followed by _variant or +metadata is not half-matched', () => {
+  const latest = { upstream: '0.40.5', n8n: '2.45.0', n8nWorkflow: '2.45.0' };
+  for (const suffix of ['_variant', '+meta', '-ubuntu', '.1']) {
+    const files = { 'docker-compose.test.yml': compose.replace('n8nio/n8n:2.44.2', `n8nio/n8n:2.44.2${suffix}`) };
+    assert.throws(() => run({ files, latest }), /expected exactly one match, found 0/, suffix);
+  }
+});
