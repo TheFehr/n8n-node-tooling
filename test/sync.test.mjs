@@ -219,6 +219,12 @@ test('text after a suffix the template spells out is not half-matched', () => {
   assert.equal('image: app:1.2.3-alpine-extra\n'.match(regexp), null);
 });
 
+test('a pin on its own line is bounded before the newline, not after it', () => {
+  const regexp = templateToRegExp('N8N_VERSION={version}\n');
+  assert.equal('N8N_VERSION=1.2.3\nNODE_ENV=test\n'.match(regexp)?.length, 1);
+  assert.equal('N8N_VERSION=1.2.3-rc\nNODE_ENV=test\n'.match(regexp), null);
+});
+
 test('a readme template that ends in a newline is not reported as drift once written', () => {
   const config = { ...pocketbaseConfig, readme: pocketbaseConfig.readme + '\n' };
   const latest = { upstream: '0.41.0', n8n: '2.45.0', n8nWorkflow: '2.45.0' };
