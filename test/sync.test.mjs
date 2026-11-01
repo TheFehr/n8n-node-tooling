@@ -213,6 +213,21 @@ test('a pin version followed by _variant or +metadata is not half-matched', () =
   }
 });
 
+test('text after a suffix the template spells out is not half-matched', () => {
+  const regexp = templateToRegExp('image: app:{version}-alpine');
+  assert.equal('image: app:1.2.3-alpine\n'.match(regexp)?.length, 1);
+  assert.equal('image: app:1.2.3-alpine-extra\n'.match(regexp), null);
+});
+
+test('a readme template that ends in a newline is not reported as drift once written', () => {
+  const config = { ...pocketbaseConfig, readme: pocketbaseConfig.readme + '\n' };
+  const latest = { upstream: '0.41.0', n8n: '2.45.0', n8nWorkflow: '2.45.0' };
+  const first = run({ config, latest });
+  const readmeText = first.files['README.md'];
+  const second = run({ config, latest, readmeText, files: first.files, pkgText: first.files['package.json'] });
+  assert.equal(second.files['README.md'], undefined);
+});
+
 test('a suffix the template spells out is matched and kept', () => {
   const config = loadConfig({
     n8nNodeTooling: {
