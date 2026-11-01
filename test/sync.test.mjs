@@ -185,6 +185,28 @@ test('dollar patterns in a template are written literally', () => {
   assert.equal(result.files['f.txt'], "v='$&1.1.0$1'\n");
 });
 
+test('a lower version is refused against the floor of a caret or tilde range', () => {
+  const config = loadConfig({
+    n8nNodeTooling: {
+      upstream: { name: 'X', source: { type: 'npm', package: 'x' }, track: { type: 'devDependency', name: 'x' } },
+    },
+  });
+  for (const range of ['^1.2.0', '~1.2.0']) {
+    assert.throws(
+      () =>
+        computeSync({
+          pkgText: JSON.stringify({ devDependencies: { x: range }, n8nWorkflowVersion: '2.0.0' }),
+          readmeText: null,
+          files: {},
+          config,
+          latest: { upstream: '1.1.0', n8n: '2.0.0', n8nWorkflow: '2.0.0' },
+        }),
+      /Refusing to move X from [\^~]1\.2\.0 back to 1\.1\.0/,
+      range,
+    );
+  }
+});
+
 test('moving upstream backwards is refused, a tracked range is replaced', () => {
   assert.throws(
     () => run({ latest: { upstream: '0.39.0', n8n: '2.44.2', n8nWorkflow: '2.44.2' } }),
