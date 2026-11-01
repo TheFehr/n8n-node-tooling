@@ -6,7 +6,7 @@ Dev-time only: nothing here ships inside a node package, and nothing is a runtim
 
 ## Status
 
-Work in progress. Implemented: the version rules and the `n8n-node-tooling` CLI (`check`, `update`, `next-version`, `verify`). Reusable GitHub Actions workflows (CI, nightly compatibility bump, release, publish) with caller templates. Planned: shared lint/format/tsconfig/Renovate presets and an integration-test skeleton. The workflows have not run on a real runner yet.
+Work in progress. Implemented: the version rules and the `n8n-node-tooling` CLI (`check`, `update`, `next-version`, `verify`). Reusable GitHub Actions workflows (CI, nightly compatibility bump, release, publish) with caller templates. Planned: shared lint/format/tsconfig/Renovate presets and an integration-test skeleton. The workflows are in use by n8n-nodes-docspell.
 
 ## Version rules
 
@@ -36,7 +36,7 @@ isInSync('2.40.3', '0.40.5', 2);      // true
 ```sh
 n8n-node-tooling check         # exit 0 up to date, 1 drift found, 2 the check itself failed
 n8n-node-tooling update        # apply the drift to package.json, README.md and pinned files
-n8n-node-tooling next-version  # offline: the version the next release must carry
+n8n-node-tooling next-version  # offline: the version the next release must carry (exit 1 if the package is already ahead of upstream)
 n8n-node-tooling verify        # offline: package version mirrors upstream, README has a Versioning section
 ```
 
@@ -71,11 +71,12 @@ Reusable workflows in `.github/workflows/`, called from thin per-repo files (cop
 
 | Workflow | Purpose |
 |---|---|
-| `ci.yml` | Lint (`lint-script`, plus an optional `extra-lint-script` as a separate step), unit tests, README versioning section, optional integration pipeline (when set, it replaces the plain unit-test step). |
+| `ci.yml` | Lint (`lint-script`, plus an optional `extra-lint-script` as a separate step), build (`build-script`, default `build`, skipped if the package has none), unit tests, README versioning section, optional integration pipeline (when set, it replaces the plain unit-test step). |
 | `nightly-compat.yml` | Detects drift in the upstream, n8n and n8n-workflow versions, tests the bump, then opens an auto-merging PR from a separate job with write access. |
 | `release.yml` | Decides whether a release is due, opens an auto-merging release PR, and tags the merge commit. |
-| `publish.yml` | On a version tag: verifies the version mirror, publishes with npm provenance, creates the GitHub release. Notes in `.github/release-notes/<version>.md` are put in front of the generated ones. |
+| `publish.yml` | On a version tag: checks that the tag equals the package version and the tagged commit is on the default branch, verifies the version mirror, publishes (skipped if that version is already on npm, so a rerun can finish the GitHub release) with npm provenance, creates the GitHub release. Notes in `.github/release-notes/<version>.md` are put in front of the generated ones. |
 
+- Every workflow checks the tooling out into the workspace and moves it to the runner's temp directory straight away, so the package's own test runner, linters and formatters never see its files.
 - A release is due when upstream's major.minor moved, or a commit since the last tag was not authored by Renovate.
 - Nightly compatibility bumps are applied in a fresh checkout by a job that resolves the versions itself and stops unless they equal the ones the test job tested; the test job's outputs are only compared, never used. Nothing the test job produced on disk is committed.
 - The repository needs a GitHub App (secrets `CLIENT_ID`, `APP_PRIVATE_KEY`) so pull requests and tags it creates trigger workflows. Publishing uses npm Trusted Publishing for the caller's `publish.yml`, or an `NPM_TOKEN` secret.

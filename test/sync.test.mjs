@@ -103,7 +103,7 @@ test('a missing README sentence or pinned line is an error, not a silent skip', 
   assert.throws(() => computeSync({ ...base, readmeText: 'no sentence', latest }), /compatibility sentence/);
   assert.throws(
     () => computeSync({ ...base, files: { 'docker-compose.test.yml': 'services: {}' }, latest }),
-    /Could not find/,
+    /expected exactly one match, found 0/,
   );
   assert.throws(() => computeSync({ ...base, files: {}, latest }), /Pinned file not found/);
 });
@@ -118,4 +118,76 @@ test('loadConfig rejects broken configuration with a clear message', () => {
     () => loadConfig({ n8nNodeTooling: { upstream: { name: 'X', source: { type: 'npm', package: 'x' }, track: { type: 'field', name: 'v' } }, pins: [{ file: 'a', template: 'no placeholder', from: 'n8n' }] } }),
     /\{version\}/,
   );
+});
+
+function run(overrides) {
+  return computeSync({
+    pkgText: JSON.stringify({ pocketbaseVersion: '0.40.5', n8nWorkflowVersion: '2.44.2' }),
+    readmeText: 'Last tested with n8n 2.44.2 and PocketBase 0.40.5.\n',
+    files: { 'docker-compose.test.yml': compose },
+    config: pocketbaseConfig,
+    latest: { upstream: '0.40.5', n8n: '2.44.2', n8nWorkflow: '2.44.2' },
+    ...overrides,
+  });
+}
+
+test('a pin that appears twice is an error, not a half-updated file', () => {
+  assert.throws(
+    () => run({ files: { 'docker-compose.test.yml': compose + '    image: n8nio/n8n:2.44.2\n' }, latest: { upstream: '0.40.5', n8n: '2.45.0', n8nWorkflow: '2.45.0' } }),
+    /expected exactly one match, found 2/,
+  );
+});
+
+test('a README sentence that appears twice is an error', () => {
+  const sentence = 'Last tested with n8n 2.44.2 and PocketBase 0.40.5.\n';
+  assert.throws(() => run({ readmeText: sentence + sentence }), /expected exactly one match, found 2/);
+});
+
+test('a pin with a tag suffix is not half-matched and rewritten without it', () => {
+  const files = { 'docker-compose.test.yml': compose.replace('n8nio/n8n:2.44.2', 'n8nio/n8n:2.44.2-ubuntu') };
+  assert.throws(
+    () => run({ files, latest: { upstream: '0.40.5', n8n: '2.45.0', n8nWorkflow: '2.45.0' } }),
+    /expected exactly one match, found 0/,
+  );
+});
+
+test('dollar patterns in a template are written literally', () => {
+  const config = loadConfig({
+    n8nNodeTooling: {
+      upstream: {
+        name: 'X',
+        source: { type: 'npm', package: 'x' },
+        track: { type: 'field', name: 'xVersion' },
+      },
+      pins: [{ file: 'f.txt', template: "v='$&{version}$1'", from: 'upstream' }],
+    },
+  });
+  const result = computeSync({
+    pkgText: JSON.stringify({ xVersion: '1.0.0', n8nWorkflowVersion: '2.0.0' }),
+    readmeText: null,
+    files: { 'f.txt': "v='$&1.0.0$1'\n" },
+    config,
+    latest: { upstream: '1.1.0', n8n: '2.0.0', n8nWorkflow: '2.0.0' },
+  });
+  assert.equal(result.files['f.txt'], "v='$&1.1.0$1'\n");
+});
+
+test('moving upstream backwards is refused, a tracked range is replaced', () => {
+  assert.throws(
+    () => run({ latest: { upstream: '0.39.0', n8n: '2.44.2', n8nWorkflow: '2.44.2' } }),
+    /Refusing to move PocketBase from 0\.40\.5 back to 0\.39\.0/,
+  );
+  const config = loadConfig({
+    n8nNodeTooling: {
+      upstream: { name: 'X', source: { type: 'npm', package: 'x' }, track: { type: 'devDependency', name: 'x' } },
+    },
+  });
+  const result = computeSync({
+    pkgText: JSON.stringify({ devDependencies: { x: '^1.0.0' }, n8nWorkflowVersion: '2.0.0' }),
+    readmeText: null,
+    files: {},
+    config,
+    latest: { upstream: '1.0.0', n8n: '2.0.0', n8nWorkflow: '2.0.0' },
+  });
+  assert.equal(JSON.parse(result.files['package.json']).devDependencies.x, '1.0.0');
 });

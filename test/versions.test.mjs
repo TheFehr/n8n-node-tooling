@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { isInSync, nextVersion, parseVersion, targetMajorMinor } from '../lib/versions.mjs';
+import { compareVersions, isInSync, nextVersion, parseVersion, targetMajorMinor } from '../lib/versions.mjs';
 
-test('parseVersion accepts a leading v, prerelease and build metadata', () => {
+test('parseVersion accepts a leading v', () => {
   assert.deepEqual(parseVersion('v0.40.5'), { major: 0, minor: 40, patch: 5 });
-  assert.deepEqual(parseVersion('26.10.0-beta.1+abc'), { major: 26, minor: 10, patch: 0 });
 });
 
 test('parseVersion rejects non-semver input', () => {
@@ -58,4 +57,17 @@ test('nextVersion flags a package that is ahead of upstream but still patches', 
     kind: 'patch',
     ahead: true,
   });
+});
+
+test('parseVersion rejects prereleases, build metadata and ranges instead of dropping them', () => {
+  assert.throws(() => parseVersion('26.10.0-beta.1'), /Not a semver/);
+  assert.throws(() => parseVersion('26.10.0+abc'), /Not a semver/);
+  assert.throws(() => parseVersion('^26.10.0'), /Not a semver/);
+});
+
+test('compareVersions orders by major, minor, then patch', () => {
+  assert.ok(compareVersions('1.2.3', '1.2.4') < 0);
+  assert.ok(compareVersions('1.3.0', '1.2.9') > 0);
+  assert.ok(compareVersions('2.0.0', '1.99.99') > 0);
+  assert.equal(compareVersions('1.2.3', '1.2.3'), 0);
 });

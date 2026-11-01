@@ -105,3 +105,31 @@ test('verify --skip-version ignores the version mirror but still needs the READM
   writeFileSync(join(dir, 'README.md'), '# x\n');
   assert.equal(run(dir, 'verify', '--skip-version').status, 1);
 });
+
+test('--cwd without a value is a failed check (2), not drift (1)', () => {
+  const result = spawnSync(process.execPath, [CLI, 'check', '--cwd'], { encoding: 'utf8' });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /--cwd needs a value/);
+});
+
+test('a flag written as --name=value is refused instead of ignored', () => {
+  const result = run(project(), 'check', '--upstream=0.41.0', '--n8n', '2.45.0', '--n8n-workflow', '2.45.0');
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /Unknown argument/);
+});
+
+test('an unknown flag is refused', () => {
+  assert.equal(run(project(), 'verify', '--skip-versions').status, 2);
+});
+
+test('next-version fails when the package is already ahead of upstream', () => {
+  const result = run(project({ version: '2.41.0' }), 'next-version');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /ahead/);
+});
+
+test('update refuses to move the tracked upstream version backwards', () => {
+  const result = run(project(), 'update', '--upstream', '0.39.0', '--n8n', '2.44.2', '--n8n-workflow', '2.44.2');
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /Refusing to move Example from 0\.40\.5 back to 0\.39\.0/);
+});
