@@ -59,11 +59,19 @@ All commands accept `--cwd <dir>`. Configuration lives in the consuming package'
 
 - `source` is where the latest upstream version comes from: a GitHub release (`github`) or an npm package (`npm`).
 - `track` is where the package records the upstream version it was last synced against: a top-level field (`field`) or a `devDependency`.
-- `readme` is the compatibility sentence kept up to date. `{n8n}` and `{upstream}` are placeholders; the rest is matched literally.
+- `readme` is the compatibility text kept up to date. `{n8n}` and `{upstream}` are placeholders. The text lives in the README between a pair of marker comments (see below); everything between them is replaced.
 - `pins` keeps versions in other files (for example container image tags used by integration tests) in step. `{version}` is the placeholder, and `from` picks `upstream` or `n8n`.
 - `peerDependencies["n8n-workflow"]` is left alone; the n8n-workflow version synced against is recorded in `n8nWorkflowVersion`.
 
-A missing README sentence or pinned line is an error, never a silent skip.
+The README block is fenced by markers, which GitHub and npm do not show:
+
+```md
+<!-- n8n-node-tooling:compatibility -->
+Last tested with n8n 2.45.7 and PocketBase 0.40.5.
+<!-- /n8n-node-tooling:compatibility -->
+```
+
+Edits inside the markers are overwritten. Missing, repeated or unbalanced markers, and a missing pinned line, are errors, never a silent skip. A pin is matched by its template, so write it so that nothing version-like follows `{version}` except text the template itself spells out.
 
 ## Workflows
 

@@ -28,7 +28,7 @@ function project(overrides = {}) {
     ...overrides,
   };
   writeFileSync(join(dir, 'package.json'), JSON.stringify(pkg, null, 2) + '\n');
-  writeFileSync(join(dir, 'README.md'), '# x\n\n## Versioning\n\nLast tested with n8n 2.44.2 and Example 0.40.5.\n');
+  writeFileSync(join(dir, 'README.md'), '# x\n\n## Versioning\n\n<!-- n8n-node-tooling:compatibility -->\nLast tested with n8n 2.44.2 and Example 0.40.5.\n<!-- /n8n-node-tooling:compatibility -->\n');
   writeFileSync(join(dir, 'compose.yml'), 'image: n8nio/n8n:2.44.2\n');
   return dir;
 }
@@ -76,7 +76,7 @@ test('next-version and verify work offline', () => {
 
 test('verify fails without a Versioning section', () => {
   const dir = project();
-  writeFileSync(join(dir, 'README.md'), '# x\n\nLast tested with n8n 2.44.2 and Example 0.40.5.\n');
+  writeFileSync(join(dir, 'README.md'), '# x\n\n<!-- n8n-node-tooling:compatibility -->\nLast tested with n8n 2.44.2 and Example 0.40.5.\n<!-- /n8n-node-tooling:compatibility -->\n');
   assert.equal(run(dir, 'verify').status, 1);
 });
 

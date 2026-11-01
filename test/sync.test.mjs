@@ -38,7 +38,7 @@ const pkgText = JSON.stringify(
 
 const base = {
   pkgText,
-  readmeText: 'Intro.\n\nLast tested with n8n 2.44.2 and PocketBase 0.40.5.\n',
+  readmeText: 'Intro.\n\n<!-- n8n-node-tooling:compatibility -->\nLast tested with n8n 2.44.2 and PocketBase 0.40.5.\n<!-- /n8n-node-tooling:compatibility -->\n',
   files: { 'docker-compose.test.yml': compose },
   config: pocketbaseConfig,
 };
@@ -98,9 +98,9 @@ test('a devDependency can be the tracked upstream version', () => {
   assert.equal(JSON.parse(result.files['package.json']).devDependencies['@actual-app/api'], '26.11.0');
 });
 
-test('a missing README sentence or pinned line is an error, not a silent skip', () => {
+test('missing README markers or a missing pinned line is an error, not a silent skip', () => {
   const latest = { upstream: '0.41.0', n8n: '2.45.0', n8nWorkflow: '2.45.0' };
-  assert.throws(() => computeSync({ ...base, readmeText: 'no sentence', latest }), /compatibility sentence/);
+  assert.throws(() => computeSync({ ...base, readmeText: 'no markers', latest }), /expected exactly one/);
   assert.throws(
     () => computeSync({ ...base, files: { 'docker-compose.test.yml': 'services: {}' }, latest }),
     /expected exactly one match, found 0/,
@@ -123,7 +123,7 @@ test('loadConfig rejects broken configuration with a clear message', () => {
 function run(overrides) {
   return computeSync({
     pkgText: JSON.stringify({ pocketbaseVersion: '0.40.5', n8nWorkflowVersion: '2.44.2' }),
-    readmeText: 'Last tested with n8n 2.44.2 and PocketBase 0.40.5.\n',
+    readmeText: '<!-- n8n-node-tooling:compatibility -->\nLast tested with n8n 2.44.2 and PocketBase 0.40.5.\n<!-- /n8n-node-tooling:compatibility -->\n',
     files: { 'docker-compose.test.yml': compose },
     config: pocketbaseConfig,
     latest: { upstream: '0.40.5', n8n: '2.44.2', n8nWorkflow: '2.44.2' },
@@ -138,9 +138,22 @@ test('a pin that appears twice is an error, not a half-updated file', () => {
   );
 });
 
-test('a README sentence that appears twice is an error', () => {
-  const sentence = 'Last tested with n8n 2.44.2 and PocketBase 0.40.5.\n';
-  assert.throws(() => run({ readmeText: sentence + sentence }), /expected exactly one match, found 2/);
+test('README markers that repeat, are unbalanced or are in the wrong order are errors', () => {
+  const block = '<!-- n8n-node-tooling:compatibility -->\nLast tested with n8n 2.44.2 and PocketBase 0.40.5.\n<!-- /n8n-node-tooling:compatibility -->\n';
+  assert.throws(() => run({ readmeText: block + block }), /found 2 and 2/);
+  assert.throws(() => run({ readmeText: block.replace('<!-- /n8n-node-tooling:compatibility -->', '') }), /found 1 and 0/);
+  assert.throws(() => run({ readmeText: '<!-- /n8n-node-tooling:compatibility -->\n<!-- n8n-node-tooling:compatibility -->\n' }), /comes before/);
+});
+
+test('the whole README block is replaced, whatever it held', () => {
+  const result = run({
+    readmeText: 'Intro\n<!-- n8n-node-tooling:compatibility -->\nold text\nmore old text\n<!-- /n8n-node-tooling:compatibility -->\nOutro\n',
+    latest: { upstream: '0.41.0', n8n: '2.45.0', n8nWorkflow: '2.45.0' },
+  });
+  assert.equal(
+    result.files['README.md'],
+    'Intro\n<!-- n8n-node-tooling:compatibility -->\nLast tested with n8n 2.45.0 and PocketBase 0.41.0.\n<!-- /n8n-node-tooling:compatibility -->\nOutro\n',
+  );
 });
 
 test('a pin with a tag suffix is not half-matched and rewritten without it', () => {
@@ -224,8 +237,3 @@ test('a suffix the template spells out is matched and kept', () => {
   assert.throws(() => sync('image: app:1.0.0.1_variant\n'), /found 0/);
 });
 
-test('a template ending in punctuation does not match a four-part version', () => {
-  const regexp = templateToRegExp('Tested with {version}.');
-  assert.equal('Tested with 0.40.5.'.match(regexp)?.length, 1);
-  assert.equal('Tested with 0.40.5.1.'.match(regexp), null);
-});
