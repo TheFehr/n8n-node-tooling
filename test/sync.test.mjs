@@ -223,3 +223,9 @@ test('a suffix the template spells out is matched and kept', () => {
   assert.throws(() => sync('image: app:1.0.0_other\n'), /found 0/);
   assert.throws(() => sync('image: app:1.0.0.1_variant\n'), /found 0/);
 });
+
+test('a template ending in punctuation does not match a four-part version', () => {
+  const regexp = templateToRegExp('Tested with {version}.');
+  assert.equal('Tested with 0.40.5.'.match(regexp)?.length, 1);
+  assert.equal('Tested with 0.40.5.1.'.match(regexp), null);
+});
