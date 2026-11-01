@@ -3,9 +3,10 @@
 # Two jobs on purpose. "prepare" runs npm ci and the test pipeline (both execute code
 # from locked dependencies) with read-only credentials and can only compromise its own
 # throwaway runner. "commit" gets write credentials, does a completely fresh checkout and
-# trusts exactly three version strings from "prepare": it re-runs the update itself, so
-# nothing prepare produced on disk is ever committed, and only the files the tooling
-# declares can be added to the pull request.
+# trusts nothing from "prepare": it resolves the three versions itself (no install is
+# needed for that), refuses to go on unless they equal the ones prepare tested, re-runs
+# the update itself, so nothing prepare produced on disk is ever committed, and only the
+# files the tooling declares can be added to the pull request.
 #
 # The caller should set a concurrency group (cancel-in-progress: false) so two runs do not
 # race on the nightly-updates branch.
@@ -144,11 +145,30 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
 
-      - name: Apply exactly the versions prepare tested
+      # prepare's outputs came from a job that ran third-party install scripts, so they are
+      # only compared here, never used. If the registry moved in between, the run fails and
+      # the next night tests the newer versions.
+      - name: Resolve the latest versions again
+        id: latest
         env:
-          UPSTREAM: ${{ needs.prepare.outputs.upstream }}
-          N8N: ${{ needs.prepare.outputs.n8n }}
-          N8N_WORKFLOW: ${{ needs.prepare.outputs.n8n_workflow }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .n8n-node-tooling/bin/n8n-node-tooling.mjs latest >> "$GITHUB_OUTPUT"
+
+      - name: Require the versions prepare tested
+        env:
+          TESTED: ${{ needs.prepare.outputs.upstream }}/${{ needs.prepare.outputs.n8n }}/${{ needs.prepare.outputs.n8n_workflow }}
+          CURRENT: ${{ steps.latest.outputs.upstream }}/${{ steps.latest.outputs.n8n }}/${{ steps.latest.outputs.n8n_workflow }}
+        run: |
+          if [ "$TESTED" != "$CURRENT" ]; then
+            echo "::error::prepare tested $TESTED but the registries now say $CURRENT"
+            exit 1
+          fi
+
+      - name: Apply the update
+        env:
+          UPSTREAM: ${{ steps.latest.outputs.upstream }}
+          N8N: ${{ steps.latest.outputs.n8n }}
+          N8N_WORKFLOW: ${{ steps.latest.outputs.n8n_workflow }}
         run: |
           node .n8n-node-tooling/bin/n8n-node-tooling.mjs update \
             --upstream "$UPSTREAM" --n8n "$N8N" --n8n-workflow "$N8N_WORKFLOW"

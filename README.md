@@ -77,7 +77,7 @@ Reusable workflows in `.github/workflows/`, called from thin per-repo files (cop
 | `publish.yml` | On a version tag: verifies the version mirror, publishes with npm provenance, creates the GitHub release. Notes in `.github/release-notes/<version>.md` are put in front of the generated ones. |
 
 - A release is due when upstream's major.minor moved, or a commit since the last tag was not authored by Renovate.
-- Nightly compatibility bumps are applied by re-running `update` with the exact versions the test job used, in a fresh checkout. Nothing the test job produced on disk is committed.
+- Nightly compatibility bumps are applied in a fresh checkout by a job that resolves the versions itself and stops unless they equal the ones the test job tested; the test job's outputs are only compared, never used. Nothing the test job produced on disk is committed.
 - The repository needs a GitHub App (secrets `CLIENT_ID`, `APP_PRIVATE_KEY`) so pull requests and tags it creates trigger workflows. Publishing uses npm Trusted Publishing for the caller's `publish.yml`, or an `NPM_TOKEN` secret.
 
 ## Development
