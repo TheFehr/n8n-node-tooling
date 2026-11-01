@@ -199,3 +199,27 @@ test('a pin version followed by _variant or +metadata is not half-matched', () =
     assert.throws(() => run({ files, latest }), /expected exactly one match, found 0/, suffix);
   }
 });
+
+test('a suffix the template spells out is matched and kept', () => {
+  const config = loadConfig({
+    n8nNodeTooling: {
+      upstream: {
+        name: 'X',
+        source: { type: 'npm', package: 'x' },
+        track: { type: 'field', name: 'xVersion' },
+      },
+      pins: [{ file: 'f.txt', template: 'image: app:{version}_variant', from: 'upstream' }],
+    },
+  });
+  const sync = (text) =>
+    computeSync({
+      pkgText: JSON.stringify({ xVersion: '1.0.0', n8nWorkflowVersion: '2.0.0' }),
+      readmeText: null,
+      files: { 'f.txt': text },
+      config,
+      latest: { upstream: '1.1.0', n8n: '2.0.0', n8nWorkflow: '2.0.0' },
+    });
+  assert.equal(sync('image: app:1.0.0_variant\n').files['f.txt'], 'image: app:1.1.0_variant\n');
+  assert.throws(() => sync('image: app:1.0.0_other\n'), /found 0/);
+  assert.throws(() => sync('image: app:1.0.0.1_variant\n'), /found 0/);
+});
