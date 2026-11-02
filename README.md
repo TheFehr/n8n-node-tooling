@@ -51,16 +51,16 @@ All commands accept `--cwd <dir>`. Configuration lives in the consuming package'
     "majorOffset": 2
   },
   "readme": "Last tested with n8n {n8n} and PocketBase {upstream}.",
-  "pins": [
-    { "file": "docker-compose.test.yml", "template": "image: n8nio/n8n:{version}", "from": "n8n" }
-  ]
+  "pins": {
+    "n8n-image": { "file": "docker-compose.test.yml", "template": "image: n8nio/n8n:{version}", "from": "n8n" }
+  }
 }
 ```
 
 - `source` is where the latest upstream version comes from: a GitHub release (`github`) or an npm package (`npm`).
 - `track` is where the package records the upstream version it was last synced against: a top-level field (`field`) or a `devDependency`.
 - `readme` is the compatibility text kept up to date. `{n8n}` and `{upstream}` are placeholders. The text lives in the README between a pair of marker comments (see below); everything between them is replaced.
-- `pins` keeps versions in other files (for example container image tags used by integration tests) in step. `{version}` is the placeholder, and `from` picks `upstream` or `n8n`.
+- `pins` keeps versions in other files (for example container image tags used by integration tests) in step. It is a map from any label to a pin; `{version}` is the placeholder, and `from` picks `upstream` or `n8n`. A list of pins also works, but the community-node lint rule `package-name-convention` reads each object in a list in `package.json` as a package and reports a missing name, so use the map.
 - `peerDependencies["n8n-workflow"]` is left alone; the n8n-workflow version synced against is recorded in `n8nWorkflowVersion`.
 
 The README block is fenced by markers, which GitHub and npm do not show:
@@ -87,7 +87,7 @@ Reusable workflows in `.github/workflows/`, called from thin per-repo files (cop
 - Every workflow checks the tooling out into the workspace and moves it to the runner's temp directory straight away, so the package's own test runner, linters and formatters never see its files.
 - A release is due when upstream's major.minor moved, or a commit since the last tag was not authored by Renovate.
 - Nightly compatibility bumps are applied in a fresh checkout by a job that resolves the versions itself and stops unless they equal the ones the test job tested; the test job's outputs are only compared, never used. Nothing the test job produced on disk is committed.
-- The repository needs a GitHub App (secrets `CLIENT_ID`, `APP_PRIVATE_KEY`) so pull requests and tags it creates trigger workflows. Publishing uses npm Trusted Publishing for the caller's `publish.yml`, or an `NPM_TOKEN` secret.
+- The repository needs a GitHub App (secrets `CLIENT_ID`, `APP_PRIVATE_KEY`) so pull requests and tags it creates trigger workflows. Publishing uses npm Trusted Publishing for the caller's `publish.yml`; there is no token fallback, so a package needs its trusted publisher set up before its first release through these workflows.
 
 ## Development
 
