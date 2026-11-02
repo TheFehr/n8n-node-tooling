@@ -12,7 +12,8 @@
 // call). A later job can pass the exact versions an earlier job tested, so it applies
 // precisely those and nothing it did not test.
 //   next-version  Print the version the next release must carry. Offline: uses the
-//                 upstream version recorded in package.json.
+//                 upstream version recorded in package.json. Exit 1 if the package is
+//                 already ahead of what upstream dictates.
 //   verify        Offline: fail (exit 1) if the package version is out of sync with
 //                 the recorded upstream version, or the README has no versioning section.
 //                 --skip-version checks only the README: main is legitimately out of sync
@@ -29,6 +30,25 @@ import { isInSync, nextVersion } from '../lib/versions.mjs';
 const args = process.argv.slice(2);
 const command = args[0];
 
+const VALUE_FLAGS = ['--cwd', '--upstream', '--n8n', '--n8n-workflow'];
+const BOOLEAN_FLAGS = ['--json', '--skip-version'];
+
+// A flag that is misspelled or written as --name=value would otherwise be ignored, and the
+// command would quietly do something other than what the caller asked for.
+function checkArguments() {
+  for (let index = 1; index < args.length; index += 1) {
+    const arg = args[index];
+    if (VALUE_FLAGS.includes(arg)) {
+      // The value is skipped, so it must not be a flag in disguise (--upstream --typo).
+      const value = args[index + 1];
+      if (value === undefined || value.startsWith('--')) throw new Error(`${arg} needs a value`);
+      index += 1;
+    } else if (!BOOLEAN_FLAGS.includes(arg)) {
+      throw new Error(`Unknown argument ${JSON.stringify(arg)} (flags take their value as a separate argument)`);
+    }
+  }
+}
+
 function flag(name) {
   const index = args.indexOf(name);
   if (index === -1) return undefined;
@@ -37,16 +57,21 @@ function flag(name) {
   return value;
 }
 
-// Only plain versions: these values end up written into repository files.
-function versionFlag(name) {
-  const value = flag(name);
-  if (value !== undefined && !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value)) {
-    throw new Error(`${name} must be a plain version like 1.2.3, got ${JSON.stringify(value)}`);
+// Only plain versions: these values end up written into repository files and into
+// $GITHUB_OUTPUT, so anything else (a range, a newline) is refused.
+function plainVersion(value, what) {
+  if (!/^\d+\.\d+\.\d+$/.test(String(value))) {
+    throw new Error(`${what} must be a plain version like 1.2.3, got ${JSON.stringify(value)}`);
   }
   return value;
 }
 
-const root = resolve(flag('--cwd') ?? process.cwd());
+function versionFlag(name) {
+  const value = flag(name);
+  return value === undefined ? undefined : plainVersion(value, name);
+}
+
+let root;
 
 function read(path) {
   const full = join(root, path);
@@ -72,9 +97,9 @@ async function resolveLatest(config) {
     needN8n ? latestN8n() : { n8n: overrides.n8n, n8nWorkflow: overrides.n8nWorkflow },
   ]);
   return {
-    upstream,
-    n8n: overrides.n8n ?? n8n.n8n,
-    n8nWorkflow: overrides.n8nWorkflow ?? n8n.n8nWorkflow,
+    upstream: plainVersion(upstream, `The ${config.upstream.name} version`),
+    n8n: plainVersion(overrides.n8n ?? n8n.n8n, 'The n8n version'),
+    n8nWorkflow: plainVersion(overrides.n8nWorkflow ?? n8n.n8nWorkflow, 'The n8n-workflow version'),
   };
 }
 
@@ -116,6 +141,8 @@ function currentUpstream(pkg, config) {
 }
 
 async function main() {
+  checkArguments();
+  root = resolve(flag('--cwd') ?? process.cwd());
   switch (command) {
     case 'check':
       return sync(false);
@@ -140,7 +167,8 @@ async function main() {
       const { pkg, config } = load();
       const next = nextVersion(pkg.version, currentUpstream(pkg, config), config.upstream.majorOffset);
       if (next.ahead) {
-        console.error(`warning: ${pkg.version} is ahead of what ${config.upstream.name} dictates`);
+        console.error(`Version ${pkg.version} is ahead of what ${config.upstream.name} dictates.`);
+        return 1;
       }
       console.log(args.includes('--json') ? JSON.stringify(next) : next.version);
       return 0;

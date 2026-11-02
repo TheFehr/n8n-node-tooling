@@ -45,6 +45,12 @@ jobs:
           path: .n8n-node-tooling
           persist-credentials: false
 
+      # Outside the workspace, so the package's own test runner, linters and formatters
+      # never see the tooling's files.
+      - name: Move the tooling out of the workspace
+        run: |
+          mv .n8n-node-tooling "$RUNNER_TEMP/n8n-node-tooling"
+
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ inputs.node-version }}
@@ -53,14 +59,53 @@ jobs:
       - name: Update npm
         run: npm install -g npm@11
 
+      # What gets published must be the commit the tag names, on the default branch, under
+      # the version the tag says. Trusted Publishing only checks the workflow file, so
+      # without this a tag on any branch (or a dispatch from one) would publish.
+      - name: Check the tag
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "::error::Publishing runs on a version tag, not on $GITHUB_REF_TYPE $GITHUB_REF_NAME"
+            exit 1
+          fi
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_NAME" != "$VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match the package version $VERSION"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor HEAD "origin/$DEFAULT_BRANCH"; then
+            echo "::error::The tagged commit is not on $DEFAULT_BRANCH"
+            exit 1
+          fi
+
+      # A rerun after a partial failure (published, but the GitHub release step failed)
+      # must not fail on "version already exists".
+      - name: Check whether this version is already on npm
+        id: published
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          # npm view ignores publishConfig.registry, which npm publish honours: ask the
+          # registry the package is published to.
+          REGISTRY=$(node -p "require('./package.json').publishConfig?.registry ?? ''")
+          if npm view "$NAME@$VERSION" version ${REGISTRY:+--registry "$REGISTRY"} > /dev/null 2>&1; then
+            echo "$NAME@$VERSION is already published"
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: npm ci
 
       # Never publish a version that does not mirror the recorded upstream version.
       - name: Verify versioning
-        run: node .n8n-node-tooling/bin/n8n-node-tooling.mjs verify
+        run: node "${{ runner.temp }}/n8n-node-tooling/bin/n8n-node-tooling.mjs" verify
 
       - name: Release
+        if: steps.published.outputs.published != 'true'
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |

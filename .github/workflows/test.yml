@@ -1,0 +1,32 @@
+# This repository's own checks. The reusable workflows next to this file are named after
+# what they do for consumers; this one only tests the tooling itself.
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "24"
+
+      - name: Unit tests
+        run: npm test
+
+      # The reusable workflows have not been run by anything but their callers, so a typo in
+      # an expression or a shell snippet would otherwise first show up in a consumer.
+      - name: Lint the workflows
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color

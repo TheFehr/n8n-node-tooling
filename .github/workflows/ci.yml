@@ -22,6 +22,10 @@ on:
         description: Optional second lint script, run as its own step so a failure names the linter.
         type: string
         default: ""
+      build-script:
+        description: npm script that builds the package (skipped if the package has none). Built here so a bundling failure shows up before a release is cut, not in the publish job.
+        type: string
+        default: build
       integration:
         description: Also run the integration pipeline (npm run test:pipeline).
         type: boolean
@@ -45,6 +49,12 @@ jobs:
           path: .n8n-node-tooling
           persist-credentials: false
 
+      # Outside the workspace, so the package's own test runner, linters and formatters
+      # never see the tooling's files.
+      - name: Move the tooling out of the workspace
+        run: |
+          mv .n8n-node-tooling "$RUNNER_TEMP/n8n-node-tooling"
+
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ inputs.node-version }}
@@ -63,6 +73,11 @@ jobs:
           LINT_SCRIPT: ${{ inputs.extra-lint-script }}
         run: npm run "$LINT_SCRIPT"
 
+      - name: Build (${{ inputs.build-script }})
+        env:
+          BUILD_SCRIPT: ${{ inputs.build-script }}
+        run: npm run "$BUILD_SCRIPT" --if-present
+
       # A package whose tests need live services runs them in the integration pipeline.
       - name: Unit tests
         if: ${{ !inputs.integration }}
@@ -72,7 +87,7 @@ jobs:
       # committed to a release (the release PR job and the publish workflow): main is out of
       # sync on purpose between a compatibility bump and the release that follows it.
       - name: Verify the README documents versioning
-        run: node .n8n-node-tooling/bin/n8n-node-tooling.mjs verify --skip-version
+        run: node "${{ runner.temp }}/n8n-node-tooling/bin/n8n-node-tooling.mjs" verify --skip-version
 
       - name: Integration tests
         if: ${{ inputs.integration }}

@@ -3,9 +3,10 @@
 # Two jobs on purpose. "prepare" runs npm ci and the test pipeline (both execute code
 # from locked dependencies) with read-only credentials and can only compromise its own
 # throwaway runner. "commit" gets write credentials, does a completely fresh checkout and
-# trusts exactly three version strings from "prepare": it re-runs the update itself, so
-# nothing prepare produced on disk is ever committed, and only the files the tooling
-# declares can be added to the pull request.
+# trusts nothing from "prepare": it resolves the three versions itself (no install is
+# needed for that), refuses to go on unless they equal the ones prepare tested, re-runs
+# the update itself, so nothing prepare produced on disk is ever committed, and only the
+# files the tooling declares can be added to the pull request.
 #
 # The caller should set a concurrency group (cancel-in-progress: false) so two runs do not
 # race on the nightly-updates branch.
@@ -55,6 +56,12 @@ jobs:
           path: .n8n-node-tooling
           persist-credentials: false
 
+      # Outside the workspace, so the package's own test runner, linters and formatters
+      # never see the tooling's files.
+      - name: Move the tooling out of the workspace
+        run: |
+          mv .n8n-node-tooling "$RUNNER_TEMP/n8n-node-tooling"
+
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ inputs.node-version }}
@@ -67,7 +74,7 @@ jobs:
         id: latest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node .n8n-node-tooling/bin/n8n-node-tooling.mjs latest >> "$GITHUB_OUTPUT"
+        run: node "${{ runner.temp }}/n8n-node-tooling/bin/n8n-node-tooling.mjs" latest >> "$GITHUB_OUTPUT"
 
       # check exits 0 (up to date), 1 (drift) or 2 (the check failed, e.g. a transient API
       # error). Only 1 means drift; 2 fails the job instead of being read as drift.
@@ -79,7 +86,7 @@ jobs:
           N8N_WORKFLOW: ${{ steps.latest.outputs.n8n_workflow }}
         run: |
           set +e
-          node .n8n-node-tooling/bin/n8n-node-tooling.mjs check \
+          node "${{ runner.temp }}/n8n-node-tooling/bin/n8n-node-tooling.mjs" check \
             --upstream "$UPSTREAM" --n8n "$N8N" --n8n-workflow "$N8N_WORKFLOW"
           code=$?
           set -e
@@ -99,7 +106,7 @@ jobs:
           N8N: ${{ steps.latest.outputs.n8n }}
           N8N_WORKFLOW: ${{ steps.latest.outputs.n8n_workflow }}
         run: |
-          node .n8n-node-tooling/bin/n8n-node-tooling.mjs update \
+          node "${{ runner.temp }}/n8n-node-tooling/bin/n8n-node-tooling.mjs" update \
             --upstream "$UPSTREAM" --n8n "$N8N" --n8n-workflow "$N8N_WORKFLOW"
           npm install
 
@@ -140,17 +147,42 @@ jobs:
           path: .n8n-node-tooling
           persist-credentials: false
 
+      # Outside the workspace, so the package's own test runner, linters and formatters
+      # never see the tooling's files.
+      - name: Move the tooling out of the workspace
+        run: |
+          mv .n8n-node-tooling "$RUNNER_TEMP/n8n-node-tooling"
+
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ inputs.node-version }}
 
-      - name: Apply exactly the versions prepare tested
+      # prepare's outputs came from a job that ran third-party install scripts, so they are
+      # only compared here, never used. If the registry moved in between, the run fails and
+      # the next night tests the newer versions.
+      - name: Resolve the latest versions again
+        id: latest
         env:
-          UPSTREAM: ${{ needs.prepare.outputs.upstream }}
-          N8N: ${{ needs.prepare.outputs.n8n }}
-          N8N_WORKFLOW: ${{ needs.prepare.outputs.n8n_workflow }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node "${{ runner.temp }}/n8n-node-tooling/bin/n8n-node-tooling.mjs" latest >> "$GITHUB_OUTPUT"
+
+      - name: Require the versions prepare tested
+        env:
+          TESTED: ${{ needs.prepare.outputs.upstream }}/${{ needs.prepare.outputs.n8n }}/${{ needs.prepare.outputs.n8n_workflow }}
+          CURRENT: ${{ steps.latest.outputs.upstream }}/${{ steps.latest.outputs.n8n }}/${{ steps.latest.outputs.n8n_workflow }}
         run: |
-          node .n8n-node-tooling/bin/n8n-node-tooling.mjs update \
+          if [ "$TESTED" != "$CURRENT" ]; then
+            echo "::error::prepare tested $TESTED but the registries now say $CURRENT"
+            exit 1
+          fi
+
+      - name: Apply the update
+        env:
+          UPSTREAM: ${{ steps.latest.outputs.upstream }}
+          N8N: ${{ steps.latest.outputs.n8n }}
+          N8N_WORKFLOW: ${{ steps.latest.outputs.n8n_workflow }}
+        run: |
+          node "${{ runner.temp }}/n8n-node-tooling/bin/n8n-node-tooling.mjs" update \
             --upstream "$UPSTREAM" --n8n "$N8N" --n8n-workflow "$N8N_WORKFLOW"
           # No lifecycle scripts run while the lockfile is regenerated.
           npm install --package-lock-only --ignore-scripts
@@ -160,7 +192,7 @@ jobs:
         run: |
           {
             echo 'paths<<EOF_PATHS'
-            node .n8n-node-tooling/bin/n8n-node-tooling.mjs files
+            node "${{ runner.temp }}/n8n-node-tooling/bin/n8n-node-tooling.mjs" files
             echo 'EOF_PATHS'
           } >> "$GITHUB_OUTPUT"
 
