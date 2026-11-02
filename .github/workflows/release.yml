@@ -20,10 +20,6 @@ name: Release
 on:
   workflow_call:
     inputs:
-      tooling-ref:
-        description: Commit SHA of n8n-node-tooling to use.
-        type: string
-        required: true
       node-version:
         type: string
         default: "24"
@@ -53,10 +49,28 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # A reusable workflow cannot see the commit it was called at, but the run lists the
+      # reusable workflows it called and the commit each was pinned at. This keeps the
+      # caller's pin the only place that names a tooling version. Public repositories only:
+      # the run is read without any permission beyond contents: read.
+      - name: Find the tooling commit this workflow was called at
+        id: tooling
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CALLED: TheFehr/n8n-node-tooling/.github/workflows/release.yml@
+        run: |
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --jq "[.referenced_workflows[] | select(.path | startswith(\"$CALLED\")) | .sha] | first // empty")
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Could not find the commit that $CALLED was called at (got '$sha'). The lookup reads the run anonymously, which only works for a public repository."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: TheFehr/n8n-node-tooling
-          ref: ${{ inputs.tooling-ref }}
+          ref: ${{ steps.tooling.outputs.sha }}
           path: .n8n-node-tooling
           persist-credentials: false
 
@@ -129,10 +143,28 @@ jobs:
           persist-credentials: false
           token: ${{ steps.app.outputs.token }}
 
+      # A reusable workflow cannot see the commit it was called at, but the run lists the
+      # reusable workflows it called and the commit each was pinned at. This keeps the
+      # caller's pin the only place that names a tooling version. Public repositories only:
+      # the run is read without any permission beyond contents: read.
+      - name: Find the tooling commit this workflow was called at
+        id: tooling
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CALLED: TheFehr/n8n-node-tooling/.github/workflows/release.yml@
+        run: |
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --jq "[.referenced_workflows[] | select(.path | startswith(\"$CALLED\")) | .sha] | first // empty")
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Could not find the commit that $CALLED was called at (got '$sha'). The lookup reads the run anonymously, which only works for a public repository."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: TheFehr/n8n-node-tooling
-          ref: ${{ inputs.tooling-ref }}
+          ref: ${{ steps.tooling.outputs.sha }}
           path: .n8n-node-tooling
           persist-credentials: false
 
