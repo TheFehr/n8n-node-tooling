@@ -75,7 +75,7 @@ Edits inside the markers are overwritten. Missing, repeated or unbalanced marker
 
 ## Workflows
 
-Reusable workflows in `.github/workflows/`, called from thin per-repo files (copy `templates/workflows/*.yml`, replace `<SHA>` with a commit of this repository in the `uses:` line, which is the only place that names a version; each workflow reads the commit it was called at from the run and checks the tooling out at that same commit. A repository that is private needs `actions: read` in the caller's `permissions`, for that lookup):
+Reusable workflows in `.github/workflows/`, called from thin per-repo files (copy `templates/workflows/*.yml`, replace `<SHA>` with a commit of this repository in the `uses:` line, which is the only place that names a version; each workflow reads the commit it was called at from the run and checks the tooling out at that same commit.. This reads the run without any permission beyond `contents: read`, which only works for public repositories; a private caller would need `actions: read` granted by the caller and declared in each workflow):
 
 | Workflow | Purpose |
 |---|---|

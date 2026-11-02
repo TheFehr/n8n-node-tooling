@@ -40,7 +40,8 @@ jobs:
 
       # A reusable workflow cannot see the commit it was called at, but the run lists the
       # reusable workflows it called and the commit each was pinned at. This keeps the
-      # caller's pin the only place that names a tooling version.
+      # caller's pin the only place that names a tooling version. Public repositories only:
+      # the run is read without any permission beyond contents: read.
       - name: Find the tooling commit this workflow was called at
         id: tooling
         env:
@@ -50,7 +51,7 @@ jobs:
           sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             --jq "[.referenced_workflows[] | select(.path | startswith(\"$CALLED\")) | .sha] | first // empty")
           if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::Could not find the commit that $CALLED was called at (got '$sha')"
+            echo "::error::Could not find the commit that $CALLED was called at (got '$sha'). The lookup reads the run anonymously, which only works for a public repository."
             exit 1
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
