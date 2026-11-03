@@ -87,7 +87,15 @@ Reusable workflows in `.github/workflows/`, called from thin per-repo files (cop
 - Every workflow checks the tooling out into the workspace and moves it to the runner's temp directory straight away, so the package's own test runner, linters and formatters never see its files.
 - A release is due when upstream's major.minor moved, or a commit since the last tag was not authored by Renovate.
 - Nightly compatibility bumps are applied in a fresh checkout by a job that resolves the versions itself and stops unless they equal the ones the test job tested; the test job's outputs are only compared, never used. Nothing the test job produced on disk is committed.
-- The repository needs a GitHub App (secrets `CLIENT_ID`, `APP_PRIVATE_KEY`) so pull requests and tags it creates trigger workflows. Publishing uses npm Trusted Publishing for the caller's `publish.yml`; there is no token fallback, so a package needs its trusted publisher set up before its first release through these workflows.
+- The repository needs a GitHub App (secrets `CLIENT_ID`, `APP_PRIVATE_KEY`) so pull requests and tags it creates trigger workflows.
+
+### Publishing
+
+Publishing uses npm Trusted Publishing for the caller's `publish.yml`. There is no token fallback.
+
+- When you move a caller to this version, delete its `secrets: NPM_TOKEN` block. A secret the reusable workflow does not declare is rejected.
+- In the package's trusted publisher settings on npmjs.com, name the workflow `publish.yml` and allow `npm publish`. Publishers created later may default to staged publishing only, which this workflow does not use.
+- The trusted publisher is configured on an existing package, so a brand-new package has to be published once by other means before its first release through these workflows.
 
 ## Development
 
