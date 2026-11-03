@@ -236,6 +236,35 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
+      - name: Find the tooling commit this workflow was called at
+        id: tooling
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CALLED: TheFehr/n8n-node-tooling/.github/workflows/release.yml@
+        run: |
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --jq "[.referenced_workflows[] | select(.path | startswith(\"$CALLED\")) | .sha] | first // empty")
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Could not find the commit that $CALLED was called at (got '$sha'). The lookup needs no permission beyond contents: read, which only works for a public repository."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: TheFehr/n8n-node-tooling
+          ref: ${{ steps.tooling.outputs.sha }}
+          path: .n8n-node-tooling
+          persist-credentials: false
+
+      - name: Move the tooling out of the workspace
+        run: |
+          mv .n8n-node-tooling "$RUNNER_TEMP/n8n-node-tooling"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ inputs.node-version }}
+
       # Tags are an unprotected ref, so this push needs no bypass rights. HEAD stays the
       # release merge commit until the next push, so every scheduled run until then lands
       # here again: an existing tag on this commit means "already released".
@@ -255,5 +284,8 @@ jobs:
             echo "Tag $VERSION already exists on this commit, nothing to do."
             exit 0
           fi
+          # A compatibility bump can merge after this release PR was prepared. Publishing
+          # would reject the tag, so stop before it exists.
+          node "${{ runner.temp }}/n8n-node-tooling/bin/n8n-node-tooling.mjs" verify
           git tag "$VERSION"
           git push "https://x-access-token:${GH_TOKEN}@github.com/$GITHUB_REPOSITORY.git" "$VERSION"
