@@ -14,5 +14,3 @@ permissions:
 jobs:
   publish:
     uses: TheFehr/n8n-node-tooling/.github/workflows/publish.yml@<SHA>
-    secrets:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

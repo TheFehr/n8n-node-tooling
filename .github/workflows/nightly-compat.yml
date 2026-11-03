@@ -58,7 +58,7 @@ jobs:
           sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             --jq "[.referenced_workflows[] | select(.path | startswith(\"$CALLED\")) | .sha] | first // empty")
           if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::Could not find the commit that $CALLED was called at (got '$sha'). The lookup reads the run anonymously, which only works for a public repository."
+            echo "::error::Could not find the commit that $CALLED was called at (got '$sha'). The lookup needs no permission beyond contents: read, which only works for a public repository."
             exit 1
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -167,7 +167,7 @@ jobs:
           sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             --jq "[.referenced_workflows[] | select(.path | startswith(\"$CALLED\")) | .sha] | first // empty")
           if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::Could not find the commit that $CALLED was called at (got '$sha'). The lookup reads the run anonymously, which only works for a public repository."
+            echo "::error::Could not find the commit that $CALLED was called at (got '$sha'). The lookup needs no permission beyond contents: read, which only works for a public repository."
             exit 1
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"

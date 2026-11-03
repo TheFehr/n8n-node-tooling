@@ -51,16 +51,16 @@ All commands accept `--cwd <dir>`. Configuration lives in the consuming package'
     "majorOffset": 2
   },
   "readme": "Last tested with n8n {n8n} and PocketBase {upstream}.",
-  "pins": [
-    { "file": "docker-compose.test.yml", "template": "image: n8nio/n8n:{version}", "from": "n8n" }
-  ]
+  "pins": {
+    "n8n-image": { "file": "docker-compose.test.yml", "template": "image: n8nio/n8n:{version}", "from": "n8n" }
+  }
 }
 ```
 
 - `source` is where the latest upstream version comes from: a GitHub release (`github`) or an npm package (`npm`).
 - `track` is where the package records the upstream version it was last synced against: a top-level field (`field`) or a `devDependency`.
 - `readme` is the compatibility text kept up to date. `{n8n}` and `{upstream}` are placeholders. The text lives in the README between a pair of marker comments (see below); everything between them is replaced.
-- `pins` keeps versions in other files (for example container image tags used by integration tests) in step. `{version}` is the placeholder, and `from` picks `upstream` or `n8n`.
+- `pins` keeps versions in other files (for example container image tags used by integration tests) in step. It is a map from any label to a pin; `{version}` is the placeholder, and `from` picks `upstream` or `n8n`. A list of pins also works, but the community-node lint rule `package-name-convention` reads each object in a list in `package.json` as a package and reports a missing name, so use the map.
 - `peerDependencies["n8n-workflow"]` is left alone; the n8n-workflow version synced against is recorded in `n8nWorkflowVersion`.
 
 The README block is fenced by markers, which GitHub and npm do not show:
@@ -75,7 +75,7 @@ Edits inside the markers are overwritten. Missing, repeated or unbalanced marker
 
 ## Workflows
 
-Reusable workflows in `.github/workflows/`, called from thin per-repo files (copy `templates/workflows/*.yml`, replace `<SHA>` with a commit of this repository in the `uses:` line, which is the only place that names a version; each workflow reads the commit it was called at from the run and checks the tooling out at that same commit.. This reads the run without any permission beyond `contents: read`, which only works for public repositories; a private caller would need `actions: read` granted by the caller and declared in each workflow):
+Reusable workflows in `.github/workflows/`, called from thin per-repo files (copy `templates/workflows/*.yml`, replace `<SHA>` with a commit of this repository in the `uses:` line, which is the only place that names a version; each workflow reads the commit it was called at from the run and checks the tooling out at that same commit). This reads the run without any permission beyond `contents: read`, which only works for public repositories; a private caller would need `actions: read` granted by the caller and declared in each workflow):
 
 | Workflow | Purpose |
 |---|---|
@@ -87,7 +87,15 @@ Reusable workflows in `.github/workflows/`, called from thin per-repo files (cop
 - Every workflow checks the tooling out into the workspace and moves it to the runner's temp directory straight away, so the package's own test runner, linters and formatters never see its files.
 - A release is due when upstream's major.minor moved, or a commit since the last tag was not authored by Renovate.
 - Nightly compatibility bumps are applied in a fresh checkout by a job that resolves the versions itself and stops unless they equal the ones the test job tested; the test job's outputs are only compared, never used. Nothing the test job produced on disk is committed.
-- The repository needs a GitHub App (secrets `CLIENT_ID`, `APP_PRIVATE_KEY`) so pull requests and tags it creates trigger workflows. Publishing uses npm Trusted Publishing for the caller's `publish.yml`, or an `NPM_TOKEN` secret.
+- The repository needs a GitHub App (secrets `CLIENT_ID`, `APP_PRIVATE_KEY`) so pull requests and tags it creates trigger workflows.
+
+### Publishing
+
+Publishing uses npm Trusted Publishing for the caller's `publish.yml`. There is no token fallback.
+
+- When you move a caller to this version, delete its `secrets: NPM_TOKEN` block. A secret the reusable workflow does not declare is rejected.
+- In the package's trusted publisher settings on npmjs.com, name the workflow `publish.yml` and allow `npm publish`. Publishers created later may default to staged publishing only, which this workflow does not use.
+- The trusted publisher is configured on an existing package, so a brand-new package has to be published once by other means before its first release through these workflows.
 
 ## Development
 

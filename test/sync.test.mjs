@@ -108,6 +108,20 @@ test('missing README markers or a missing pinned line is an error, not a silent 
   assert.throws(() => computeSync({ ...base, files: {}, latest }), /Pinned file not found/);
 });
 
+test('pins can be a map or a list, and a map entry is checked like a list entry', () => {
+  const tooling = (pins) => ({
+    upstream: { name: 'X', source: { type: 'npm', package: 'x' }, track: { type: 'field', name: 'v' } },
+    pins,
+  });
+  const pin = { file: 'a', template: 'image: app:{version}', from: 'n8n' };
+  assert.deepEqual(loadConfig({ n8nNodeTooling: tooling({ 'app-image': pin }) }).pins, [pin]);
+  assert.deepEqual(loadConfig({ n8nNodeTooling: tooling([pin]) }).pins, [pin]);
+  assert.deepEqual(loadConfig({ n8nNodeTooling: tooling(undefined) }).pins, []);
+  assert.throws(() => loadConfig({ n8nNodeTooling: tooling({ broken: { file: 'a' } }) }), /every pin needs/);
+  assert.throws(() => loadConfig({ n8nNodeTooling: tooling({ broken: 'text' }) }), /every pin needs/);
+  assert.throws(() => loadConfig({ n8nNodeTooling: tooling('text') }), /"pins" must be/);
+});
+
 test('loadConfig rejects broken configuration with a clear message', () => {
   assert.throws(() => loadConfig({}), /missing/);
   assert.throws(
