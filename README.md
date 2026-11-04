@@ -75,7 +75,7 @@ Edits inside the markers are overwritten. Missing, repeated or unbalanced marker
 
 ## Workflows
 
-Reusable workflows in `.github/workflows/`, called from thin per-repo files (copy `templates/workflows/*.yml`, replace `<SHA>` with a commit of this repository in the `uses:` line, which is the only place that names a version; each workflow reads the commit it was called at from the run and checks the tooling out at that same commit). This reads the run without any permission beyond `contents: read`, which only works for public repositories; a private caller would need `actions: read` granted by the caller and declared in each workflow):
+Reusable workflows in `.github/workflows/`, called from thin per-repo files (copy `templates/workflows/*.yml`, replace `<SHA>` with the commit of a release of this repository and `<version>` with its tag (for example `# v0.1.0`) in the `uses:` line, which is the only place that names a version; each workflow reads the commit it was called at from the run and checks the tooling out at that same commit). This reads the run without any permission beyond `contents: read`, which only works for public repositories; a private caller would need `actions: read` granted by the caller and declared in each workflow):
 
 | Workflow | Purpose |
 |---|---|
@@ -96,6 +96,14 @@ Publishing uses npm Trusted Publishing for the caller's `publish.yml`. There is 
 - When you move a caller to this version, delete its `secrets: NPM_TOKEN` block. A secret the reusable workflow does not declare is rejected.
 - In the package's trusted publisher settings on npmjs.com, name the workflow `publish.yml` and allow `npm publish`. Publishers created later may default to staged publishing only, which this workflow does not use.
 - The trusted publisher is configured on an existing package, so a brand-new package has to be published once by other means before its first release through these workflows.
+
+### Releasing
+
+Releases are tagged automatically. Every push to `main` runs `tag-release.yml`, which works out the next version from the commit messages since the last tag and, if there is one, creates the tag `vX.Y.Z` and a GitHub release with generated notes. Nothing in the repository is changed, so the protected branch is never pushed to.
+
+A squash merge takes the pull request title as the commit message, so titles have to be [Conventional Commits](https://www.conventionalcommits.org/) (CI checks this): `fix:` and `perf:` release a patch, `feat:` a minor, and a `!` after the type (`feat!:`) a major. A breaking change has to be marked with the `!` in the title, because a footer in the pull request body does not reach the squashed commit. A `revert:` releases a patch. Those are the only types that release, and `docs:`, `test:`, `ci:` and `chore:` are the only ones that do not; there is no `refactor:`, `build:` or `style:`, so a refactor of something consumers get is a `fix` or `perf`, and one of tests or docs is a `chore`. A change that consumers get through the workflows, the CLI or the templates has to be a `feat`, `fix`, `perf` or `revert`.
+
+Callers pin the commit and name the tag in the comment after it (`@<sha> # vX.Y.Z`). That is what lets Renovate see which release the pin is and open a pull request when a newer one appears. A caller that moves across a release that removes an input or a secret has to drop it in the same change.
 
 ## Development
 

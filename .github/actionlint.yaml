@@ -1,0 +1,6 @@
+# GitHub accepts `queue: max` in a concurrency group (docs: "Workflow syntax"), but actionlint
+# up to 1.7.12 does not know the key. Remove this when a release does.
+paths:
+  .github/workflows/tag-release.yml:
+    ignore:
+      - 'unexpected key "queue" for "concurrency" section'

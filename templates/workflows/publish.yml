@@ -13,4 +13,4 @@ permissions:
 
 jobs:
   publish:
-    uses: TheFehr/n8n-node-tooling/.github/workflows/publish.yml@<SHA>
+    uses: TheFehr/n8n-node-tooling/.github/workflows/publish.yml@<SHA> # <version>
