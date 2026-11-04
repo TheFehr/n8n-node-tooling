@@ -93,6 +93,13 @@ jobs:
           # edited merge title cannot break detection.
           LABELLED=$(gh api "repos/$GITHUB_REPOSITORY/commits/$(git rev-parse HEAD)/pulls" \
             --jq '[.[] | select(.labels[].name == "release")] | length > 0')
+          # A release commit whose version no longer mirrors upstream (a compatibility bump
+          # merged after the release PR was prepared) is never tagged, and it stays HEAD until
+          # the next push. It must not block planning, or no new release PR is ever opened.
+          if [ "$LABELLED" = "true" ] && ! node "${{ runner.temp }}/n8n-node-tooling/bin/n8n-node-tooling.mjs" verify > /dev/null 2>&1; then
+            echo "The release commit's version no longer mirrors upstream; planning a new release."
+            LABELLED=false
+          fi
           echo "is_release_commit=$LABELLED" >> "$GITHUB_OUTPUT"
           if [ "$LABELLED" = "true" ]; then
             echo "release=false" >> "$GITHUB_OUTPUT"
