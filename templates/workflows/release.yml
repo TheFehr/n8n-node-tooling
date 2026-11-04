@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   release:
-    uses: TheFehr/n8n-node-tooling/.github/workflows/release.yml@<SHA>
+    uses: TheFehr/n8n-node-tooling/.github/workflows/release.yml@<SHA> # <version>
     secrets:
       CLIENT_ID: ${{ secrets.CLIENT_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}

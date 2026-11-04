@@ -75,7 +75,7 @@ Edits inside the markers are overwritten. Missing, repeated or unbalanced marker
 
 ## Workflows
 
-Reusable workflows in `.github/workflows/`, called from thin per-repo files (copy `templates/workflows/*.yml`, replace `<SHA>` with a commit of this repository in the `uses:` line, which is the only place that names a version; each workflow reads the commit it was called at from the run and checks the tooling out at that same commit). This reads the run without any permission beyond `contents: read`, which only works for public repositories; a private caller would need `actions: read` granted by the caller and declared in each workflow):
+Reusable workflows in `.github/workflows/`, called from thin per-repo files (copy `templates/workflows/*.yml`, replace `<SHA>` with the commit of a release of this repository and `<version>` with its tag (for example `# v0.1.0`) in the `uses:` line, which is the only place that names a version; each workflow reads the commit it was called at from the run and checks the tooling out at that same commit). This reads the run without any permission beyond `contents: read`, which only works for public repositories; a private caller would need `actions: read` granted by the caller and declared in each workflow):
 
 | Workflow | Purpose |
 |---|---|
@@ -96,6 +96,10 @@ Publishing uses npm Trusted Publishing for the caller's `publish.yml`. There is 
 - When you move a caller to this version, delete its `secrets: NPM_TOKEN` block. A secret the reusable workflow does not declare is rejected.
 - In the package's trusted publisher settings on npmjs.com, name the workflow `publish.yml` and allow `npm publish`. Publishers created later may default to staged publishing only, which this workflow does not use.
 - The trusted publisher is configured on an existing package, so a brand-new package has to be published once by other means before its first release through these workflows.
+
+### Releasing
+
+A release is a tag `vX.Y.Z` with a GitHub release on a commit of `main`, made by hand for now: `gh release create vX.Y.Z --target <sha> --generate-notes`. Callers pin the commit and name the tag in the comment after it (`@<sha> # vX.Y.Z`), which is what lets Renovate see which release the pin is and open a pull request when a newer one appears. Before 1.0 any release may change behaviour, so read the notes before merging such a pull request. A caller that moves across a release that removes an input or a secret has to drop it in the same change.
 
 ## Development
 
