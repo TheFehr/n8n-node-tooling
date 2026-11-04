@@ -16,6 +16,7 @@ permissions:
 concurrency:
   group: tag-release
   cancel-in-progress: false
+  queue: max
 
 jobs:
   tag:
@@ -28,6 +29,11 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
+
+      # Only the bypass roles can push to main without the pull request check, so a commit
+      # that skipped it still has to pass the tests before it is tagged.
+      - name: Unit tests
+        run: npm test
 
       - name: Tag and release
         env:
