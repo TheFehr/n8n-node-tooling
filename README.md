@@ -99,7 +99,11 @@ Publishing uses npm Trusted Publishing for the caller's `publish.yml`. There is 
 
 ### Releasing
 
-A release is a tag `vX.Y.Z` with a GitHub release on a commit of `main`, made by hand for now: `gh release create vX.Y.Z --target <sha> --generate-notes`. Callers pin the commit and name the tag in the comment after it (`@<sha> # vX.Y.Z`), which is what lets Renovate see which release the pin is and open a pull request when a newer one appears. Before 1.0 any release may change behaviour, so read the notes before merging such a pull request. A caller that moves across a release that removes an input or a secret has to drop it in the same change.
+Releases are tagged automatically. Every push to `main` runs `tag-release.yml`, which works out the next version from the commit messages since the last tag and, if there is one, creates the tag `vX.Y.Z` and a GitHub release with generated notes. Nothing in the repository is changed, so the protected branch is never pushed to.
+
+A squash merge takes the pull request title as the commit message, so titles have to be [Conventional Commits](https://www.conventionalcommits.org/) (CI checks this): `fix:` and `perf:` release a patch, `feat:` a minor, and a `!` after the type (`feat!:`) or a `BREAKING CHANGE:` line in the body a major. `docs:`, `test:`, `ci:` and `chore:` release nothing, so a change that consumers get through the workflows, the CLI or the templates has to be a `feat`, `fix` or `perf`.
+
+Callers pin the commit and name the tag in the comment after it (`@<sha> # vX.Y.Z`). That is what lets Renovate see which release the pin is and open a pull request when a newer one appears. A caller that moves across a release that removes an input or a secret has to drop it in the same change.
 
 ## Development
 

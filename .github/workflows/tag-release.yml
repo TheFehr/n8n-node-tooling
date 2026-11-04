@@ -1,0 +1,35 @@
+# Tags a release for every push to main that carries a feat, a fix, a perf change or a
+# breaking change, and creates its GitHub release with generated notes. Callers pin the
+# commit and name this tag next to it, which is what lets Renovate follow the releases.
+# The version comes from the commit messages since the last tag (see .releaserc.json); no
+# file in the repository is changed, so the protected branch is never pushed to.
+name: Tag release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tag-release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "24"
+
+      - name: Tag and release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npx --yes -p semantic-release@25.0.9 -p conventional-changelog-conventionalcommits@9.3.1 semantic-release

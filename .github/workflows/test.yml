@@ -4,6 +4,7 @@ name: Test
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
   push:
     branches:
       - main
@@ -22,6 +23,19 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
+
+      # A squash merge uses the pull request title as the commit message, and the next release
+      # version is worked out from it (see tag-release.yml), so the title has to follow
+      # Conventional Commits.
+      - name: Pull request title
+        if: github.event_name == 'pull_request'
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if ! [[ "$TITLE" =~ ^(feat|fix|perf|docs|test|ci|chore|refactor|build|revert|style)(\([a-z0-9._/-]+\))?!?:\ .+ ]]; then
+            echo "::error::The title '$TITLE' is not a Conventional Commit: <type>[(scope)][!]: <summary>, with a type of feat, fix, perf, docs, test, ci, chore, refactor, build, revert or style."
+            exit 1
+          fi
 
       - name: Unit tests
         run: npm test
