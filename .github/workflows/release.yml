@@ -96,7 +96,11 @@ jobs:
           # A release commit whose version no longer mirrors upstream (a compatibility bump
           # merged after the release PR was prepared) is never tagged, and it stays HEAD until
           # the next push. It must not block planning, or no new release PR is ever opened.
-          if [ "$LABELLED" = "true" ] && ! node "${{ runner.temp }}/n8n-node-tooling/bin/n8n-node-tooling.mjs" verify > /dev/null 2>&1; then
+          # Only version drift counts: a README or configuration failure is not stale, and the
+          # tag job reports it.
+          CLI="${{ runner.temp }}/n8n-node-tooling/bin/n8n-node-tooling.mjs"
+          if [ "$LABELLED" = "true" ] && node "$CLI" verify --skip-version > /dev/null 2>&1 \
+            && ! node "$CLI" verify > /dev/null 2>&1; then
             echo "The release commit's version no longer mirrors upstream; planning a new release."
             LABELLED=false
           fi
