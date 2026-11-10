@@ -79,7 +79,7 @@ Reusable workflows in `.github/workflows/`, called from thin per-repo files (cop
 
 | Workflow | Purpose |
 |---|---|
-| `ci.yml` | Lint (`lint-script`, plus an optional `extra-lint-script` as a separate step), build (`build-script`, default `build`, skipped if the package has none), unit tests, README versioning section, optional integration pipeline (when set, it replaces the plain unit-test step). |
+| `ci.yml` | Lint (`lint-script`, then `lint:oxlint` and `format:check` as separate steps when the package defines them, plus an optional `extra-lint-script`), build (`build-script`, default `build`, skipped if the package has none), unit tests, README versioning section, optional integration pipeline (when set, it replaces the plain unit-test step). |
 | `nightly-compat.yml` | Detects drift in the upstream, n8n and n8n-workflow versions, tests the bump, then opens an auto-merging PR from a separate job with write access. |
 | `release.yml` | Decides whether a release is due, opens an auto-merging release PR, and tags the merge commit (after checking once more that the version still mirrors upstream, because a compatibility bump may have merged since the release PR was prepared). |
 | `publish.yml` | On a version tag: checks that the tag equals the package version and the tagged commit is on the default branch, verifies the version mirror, publishes (skipped if that version is already on npm, so a rerun can finish the GitHub release) with npm provenance, creates the GitHub release. Notes in `.github/release-notes/<version>.md` are put in front of the generated ones. |

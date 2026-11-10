@@ -14,5 +14,5 @@ jobs:
     uses: TheFehr/n8n-node-tooling/.github/workflows/ci.yml@<SHA> # <version>
     # with:
     #   integration: true  # also run `npm run test:pipeline`
-    #   lint-script: lint:n8n
-    #   extra-lint-script: lint:oxlint  # a second linter, as its own step
+    #   lint-script: lint
+    # `lint:oxlint` and `format:check` scripts in package.json run as their own steps.
