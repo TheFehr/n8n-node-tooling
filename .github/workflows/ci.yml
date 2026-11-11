@@ -88,12 +88,24 @@ jobs:
         run: npm run "$LINT_SCRIPT"
 
       # The shared linters run when the package defines the script, each as its own step so a
-      # failure names the tool. A package without the script skips the step.
+      # failure names the tool. A package without the script shows the step as skipped, which
+      # `npm run --if-present` would not: it exits 0 and the step would read as passed.
+      - name: Find the optional lint scripts
+        id: scripts
+        run: |
+          for script in lint:oxlint format:check; do
+            if [ -n "$(npm pkg get "scripts.$script" | tr -d '{}"[:space:]')" ]; then
+              echo "${script//:/_}=true" >> "$GITHUB_OUTPUT"
+            fi
+          done
+
       - name: Lint (oxlint)
-        run: npm run lint:oxlint --if-present
+        if: ${{ steps.scripts.outputs.lint_oxlint == 'true' }}
+        run: npm run lint:oxlint
 
       - name: Check formatting (oxfmt)
-        run: npm run format:check --if-present
+        if: ${{ steps.scripts.outputs.format_check == 'true' }}
+        run: npm run format:check
 
       - name: Build (${{ inputs.build-script }})
         env:
