@@ -22,6 +22,10 @@ on:
         description: Command that tests the bumped versions.
         type: string
         default: npm run test:pipeline
+      upstream-patterns:
+        description: Extended regular expressions, one per line, for crashes of the service the pipeline tests against. A failed pipeline whose log matches one is reported as an upstream problem instead of unclassified.
+        type: string
+        default: ""
     secrets:
       CLIENT_ID:
         required: true
@@ -125,10 +129,20 @@ jobs:
           npm install
 
       - name: Test the bumped versions
+        id: pipeline
         if: steps.check.outputs.updates_found == 'true'
         env:
           PIPELINE: ${{ inputs.pipeline }}
-        run: bash -c "$PIPELINE"
+        run: |
+          set -o pipefail
+          bash -c "$PIPELINE" 2>&1 | tee "$RUNNER_TEMP/pipeline.log"
+
+      # Says whether the bump broke the node or the environment it is tested in.
+      - name: Classify the pipeline failure
+        if: ${{ failure() && steps.pipeline.conclusion == 'failure' }}
+        env:
+          N8N_NODE_TOOLING_UPSTREAM_PATTERNS: ${{ inputs.upstream-patterns }}
+        run: node "${{ runner.temp }}/n8n-node-tooling/bin/n8n-node-tooling.mjs" classify-failure --file "$RUNNER_TEMP/pipeline.log"
 
   commit:
     needs: prepare

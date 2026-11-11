@@ -18,10 +18,17 @@
 //                 the recorded upstream version, or the README has no versioning section.
 //                 --skip-version checks only the README: main is legitimately out of sync
 //                 between a compatibility bump and the release that follows it.
+//   classify-failure --file <log>
+//                 Say whether a failed test pipeline broke in the node's own checks or in
+//                 the environment. Prints a GitHub annotation (and a job summary when
+//                 $GITHUB_STEP_SUMMARY is set). Extra upstream patterns, one regular
+//                 expression per line, come from $N8N_NODE_TOOLING_UPSTREAM_PATTERNS.
+//                 Always exits 0 when the log is missing: it only adds information.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
+import { classify, MESSAGES } from '../lib/classify.mjs';
 import { loadConfig, trackedUpstreamVersion } from '../lib/config.mjs';
 import { computeSync } from '../lib/sync.mjs';
 import { latestN8n, latestUpstreamVersion } from '../lib/upstream.mjs';
@@ -30,7 +37,7 @@ import { isInSync, nextVersion } from '../lib/versions.mjs';
 const args = process.argv.slice(2);
 const command = args[0];
 
-const VALUE_FLAGS = ['--cwd', '--upstream', '--n8n', '--n8n-workflow'];
+const VALUE_FLAGS = ['--cwd', '--file', '--upstream', '--n8n', '--n8n-workflow'];
 const BOOLEAN_FLAGS = ['--json', '--skip-version'];
 
 // A flag that is misspelled or written as --name=value would otherwise be ignored, and the
@@ -191,8 +198,23 @@ async function main() {
       if (ok) console.log(`Version ${pkg.version} mirrors ${config.upstream.name} ${upstream}.`);
       return ok ? 0 : 1;
     }
+    case 'classify-failure': {
+      const file = flag('--file');
+      if (file === undefined) throw new Error('classify-failure needs --file <log>');
+      if (!existsSync(file)) {
+        console.log(`No log at ${file}, nothing to classify.`);
+        return 0;
+      }
+      const verdict = classify(readFileSync(file, 'utf8'), process.env.N8N_NODE_TOOLING_UPSTREAM_PATTERNS ?? '');
+      const level = verdict === 'node' ? 'error' : verdict === 'upstream' ? 'warning' : 'notice';
+      console.log(`::${level}::${MESSAGES[verdict]}`);
+      if (process.env.GITHUB_STEP_SUMMARY) {
+        appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Failure classification: ${verdict}\n\n${MESSAGES[verdict]}\n`);
+      }
+      return 0;
+    }
     default:
-      console.error('Usage: n8n-node-tooling <check|update|latest|files|next-version|verify> [--cwd <dir>]');
+      console.error('Usage: n8n-node-tooling <check|update|latest|files|next-version|verify|classify-failure> [--cwd <dir>]');
       return 2;
   }
 }

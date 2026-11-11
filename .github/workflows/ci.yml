@@ -26,6 +26,10 @@ on:
         description: Also run the integration pipeline (npm run test:pipeline).
         type: boolean
         default: false
+      upstream-patterns:
+        description: Extended regular expressions, one per line, for crashes of the service the pipeline tests against. A failed pipeline whose log matches one is reported as an upstream problem instead of unclassified.
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -126,7 +130,17 @@ jobs:
         run: node "${{ runner.temp }}/n8n-node-tooling/bin/n8n-node-tooling.mjs" verify --skip-version
 
       - name: Integration tests
+        id: pipeline
         if: ${{ inputs.integration }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run test:pipeline
+        run: |
+          set -o pipefail
+          npm run test:pipeline 2>&1 | tee "$RUNNER_TEMP/pipeline.log"
+
+      # Says whether the pipeline broke in the node's own checks or in the environment.
+      - name: Classify the pipeline failure
+        if: ${{ failure() && steps.pipeline.conclusion == 'failure' }}
+        env:
+          N8N_NODE_TOOLING_UPSTREAM_PATTERNS: ${{ inputs.upstream-patterns }}
+        run: node "${{ runner.temp }}/n8n-node-tooling/bin/n8n-node-tooling.mjs" classify-failure --file "$RUNNER_TEMP/pipeline.log"
