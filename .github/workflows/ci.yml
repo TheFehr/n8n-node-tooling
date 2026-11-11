@@ -93,8 +93,10 @@ jobs:
       - name: Find the optional lint scripts
         id: scripts
         run: |
+          # Read from package.json directly: `npm pkg get` answers per workspace when the
+          # caller's .npmrc enables workspaces, and this workflow supports one package only.
           for script in lint:oxlint format:check; do
-            if [ -n "$(npm pkg get "scripts.$script" | tr -d '{}"[:space:]')" ]; then
+            if SCRIPT="$script" node -e 'process.exit(require("./package.json").scripts?.[process.env.SCRIPT] ? 0 : 1)'; then
               echo "${script//:/_}=true" >> "$GITHUB_OUTPUT"
             fi
           done

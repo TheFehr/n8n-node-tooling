@@ -85,6 +85,7 @@ Reusable workflows in `.github/workflows/`, called from thin per-repo files (cop
 | `publish.yml` | On a version tag: checks that the tag equals the package version and the tagged commit is on the default branch, verifies the version mirror, publishes (skipped if that version is already on npm, so a rerun can finish the GitHub release) with npm provenance, creates the GitHub release. Notes in `.github/release-notes/<version>.md` are put in front of the generated ones. |
 
 - Every workflow checks the tooling out into the workspace and moves it to the runner's temp directory straight away, so the package's own test runner, linters and formatters never see its files.
+- A package is one npm package at the repository root. Workspaces (a monorepo) are not supported: the version mirror, `verify`, the nightly bump, release-it and publish all read the root `package.json`, so the CI steps that look for optional scripts read it too.
 - A release is due when upstream's major.minor moved, or a commit since the last tag was not authored by Renovate.
 - Nightly compatibility bumps are applied in a fresh checkout by a job that resolves the versions itself and stops unless they equal the ones the test job tested; the test job's outputs are only compared, never used. Nothing the test job produced on disk is committed.
 - The repository needs a GitHub App (secrets `CLIENT_ID`, `APP_PRIVATE_KEY`) so pull requests and tags it creates trigger workflows.
