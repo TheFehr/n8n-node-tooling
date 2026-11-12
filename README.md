@@ -79,7 +79,7 @@ Reusable workflows in `.github/workflows/`, called from thin per-repo files (cop
 
 | Workflow | Purpose |
 |---|---|
-| `ci.yml` | Lint (`lint-script`, then `lint:oxlint` and `format:check` as separate steps when the package defines them, plus an optional `extra-lint-script`), build (`build-script`, default `build`, skipped if the package has none), unit tests, README versioning section, optional integration pipeline (when set, it replaces the plain unit-test step). |
+| `ci.yml` | Lint (`lint-script`, then `lint:oxlint` and `format:check` as separate steps when the package defines them, plus an optional `extra-lint-script`), build (`build-script`, default `build`, skipped if the package has none), unit tests, README versioning section, optional integration pipeline (when set, it replaces the plain unit-test step; a failed pipeline is classified, see below). |
 | `nightly-compat.yml` | Detects drift in the upstream, n8n and n8n-workflow versions, tests the bump, then opens an auto-merging PR from a separate job with write access. |
 | `release.yml` | Decides whether a release is due, opens an auto-merging release PR, and tags the merge commit (after checking once more that the version still mirrors upstream, because a compatibility bump may have merged since the release PR was prepared). |
 | `publish.yml` | On a version tag: checks that the tag equals the package version and the tagged commit is on the default branch, verifies the version mirror, publishes (skipped if that version is already on npm, so a rerun can finish the GitHub release) with npm provenance, creates the GitHub release. Notes in `.github/release-notes/<version>.md` are put in front of the generated ones. |
@@ -89,6 +89,18 @@ Reusable workflows in `.github/workflows/`, called from thin per-repo files (cop
 - A release is due when upstream's major.minor moved, or a commit since the last tag was not authored by Renovate.
 - Nightly compatibility bumps are applied in a fresh checkout by a job that resolves the versions itself and stops unless they equal the ones the test job tested; the test job's outputs are only compared, never used. Nothing the test job produced on disk is committed.
 - The repository needs a GitHub App (secrets `CLIENT_ID`, `APP_PRIVATE_KEY`) so pull requests and tags it creates trigger workflows.
+
+### Classifying a failed pipeline
+
+When the integration pipeline (`ci.yml`) or the nightly test fails, a follow-up step reads the pipeline's log and annotates the run with one of three verdicts, so nobody has to open the log to find out where to look:
+
+| Verdict | Meaning |
+|---|---|
+| `node` | An assertion or verification of the node's own failed: a real compatibility problem. |
+| `upstream` | The environment crashed first (connection refused, Docker errors, a service that did not start). Probably not a bug in the package. |
+| `unknown` | Neither matched. Read the log. |
+
+The node wins when both appear, because then the tests did run. A service that fails in its own way (a database migration error, a panic) is added with the `upstream-patterns` input of `ci.yml` and `nightly-compat.yml`: JavaScript regular expressions (so `\d`, not POSIX classes like `[[:digit:]]`), one per line. The pipeline script has to print its own output files into the log when it fails, because only the log is read. The same check is available as `n8n-node-tooling classify-failure --file <log>`.
 
 ### Publishing
 
