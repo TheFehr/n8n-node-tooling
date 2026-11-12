@@ -100,7 +100,7 @@ When the integration pipeline (`ci.yml`) or the nightly test fails, a follow-up 
 | `upstream` | The environment crashed first (connection refused, Docker errors, a service that did not start). Probably not a bug in the package. |
 | `unknown` | Neither matched. Read the log. |
 
-The node wins when both appear, because then the tests did run. A service that fails in its own way (a database migration error, a panic) is added with the `upstream-patterns` input of `ci.yml` and `nightly-compat.yml`: extended regular expressions, one per line. The pipeline script has to print its own output files into the log when it fails, because only the log is read. The same check is available as `n8n-node-tooling classify-failure --file <log>`.
+The node wins when both appear, because then the tests did run. A service that fails in its own way (a database migration error, a panic) is added with the `upstream-patterns` input of `ci.yml` and `nightly-compat.yml`: JavaScript regular expressions (so `\d`, not POSIX classes like `[[:digit:]]`), one per line. The pipeline script has to print its own output files into the log when it fails, because only the log is read. The same check is available as `n8n-node-tooling classify-failure --file <log>`.
 
 ### Publishing
 

@@ -21,7 +21,7 @@
 //   classify-failure --file <log>
 //                 Say whether a failed test pipeline broke in the node's own checks or in
 //                 the environment. Prints a GitHub annotation (and a job summary when
-//                 $GITHUB_STEP_SUMMARY is set). Extra upstream patterns, one regular
+//                 $GITHUB_STEP_SUMMARY is set). Extra upstream patterns, one JavaScript regular
 //                 expression per line, come from $N8N_NODE_TOOLING_UPSTREAM_PATTERNS.
 //                 Always exits 0 when the log is missing: it only adds information.
 

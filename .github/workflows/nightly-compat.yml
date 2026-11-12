@@ -23,7 +23,7 @@ on:
         type: string
         default: npm run test:pipeline
       upstream-patterns:
-        description: Extended regular expressions, one per line, for crashes of the service the pipeline tests against. A failed pipeline whose log matches one is reported as an upstream problem instead of unclassified.
+        description: JavaScript regular expressions (no POSIX classes like [[:digit:]]), one per line, for crashes of the service the pipeline tests against. A failed pipeline whose log matches one is reported as an upstream problem instead of unclassified.
         type: string
         default: ""
     secrets:

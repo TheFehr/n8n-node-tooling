@@ -69,3 +69,8 @@ test('classify-failure needs --file', () => {
   const result = spawnSync(process.execPath, [CLI, 'classify-failure'], { encoding: 'utf8' });
   assert.notEqual(result.status, 0);
 });
+
+test('extra patterns are JavaScript regular expressions, not POSIX', () => {
+  assert.equal(classify('migration 123 failed', 'migration \\d+ failed'), 'upstream');
+  assert.equal(classify('migration 123 failed', 'migration [[:digit:]]+ failed'), 'unknown');
+});
